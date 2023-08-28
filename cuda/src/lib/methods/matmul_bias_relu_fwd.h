@@ -3,8 +3,11 @@
 #include <cudnn.h>
 #include <cudnn_frontend.h>
 
+#include "lib/tensor.h"
 #include "lib/types.h"
 
-void matmul_bias_relu_fwd(cudnn_frontend::Tensor& x, void* x_ptr, cudnn_frontend::Tensor& w,
-                          void* w_ptr, cudnn_frontend::Tensor& b, void* b_ptr,
-                          cudnn_frontend::Tensor& y, void* y_ptr, cudnnHandle_t handle);
+using namespace lib;
+
+void matmul_bias_relu_fwd(tensor::Tensor &x, tensor::Tensor &w, tensor::Tensor &b,
+                          tensor::Tensor &y, cudnnHandle_t handle,
+                          PlanCacheManager &plan_cache_manager);

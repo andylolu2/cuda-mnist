@@ -15,11 +15,12 @@
     "customizations": {
         "vscode": {
             "extensions": [
-                "ms-vscode.cpptools",
-                "ms-vscode.cpptools-extension-pack",
-                "nvidia.nsight-vscode-edition",
-                "ms-vscode.makefile-tools"
-            ]
+				"ms-vscode.cpptools",
+				"ms-vscode.cpptools-extension-pack",
+				"nvidia.nsight-vscode-edition",
+				"ms-vscode.makefile-tools",
+				"josetr.cmake-language-support-vscode"
+			]
         }
     },
     "updateRemoteUserUID": true

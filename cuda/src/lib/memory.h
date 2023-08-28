@@ -7,12 +7,12 @@
 
 namespace lib {
     namespace memory {
-        template <typename T>
         class DeviceMemory {
            private:
-            T* data;
+            DeviceMemory(DeviceMemory const&) = delete;  // copy is forbidden
+            void* data;
+            shape dims;
             size_t size;
-            DeviceMemory(&DeviceMemory& other) = delete;  // copy is forbidden
 
            public:
             DeviceMemory(cudnn_frontend::Tensor& tensor) {
@@ -21,25 +21,27 @@ namespace lib {
                 for (auto& dim : dims) {
                     size *= dim;
                 }
+
+                this->dims = dims;
                 this->size = size;
                 check_cuda_status(cudaMalloc((void**)&data, size * sizeof(T)));
             }
+
             DeviceMemory(shape dims) {
                 size_t size = 1;
                 for (auto& dim : dims) {
                     size *= dim;
                 }
-                this->size = size;
-                check_cuda_status(cudaMalloc((void**)&data, size * sizeof(T)));
-            }
-            DeviceMemory(size_t size) {
+
+                this->dims = dims;
                 this->size = size;
                 check_cuda_status(cudaMalloc((void**)&data, size * sizeof(T)));
             }
 
             ~DeviceMemory() { check_cuda_status(cudaFree((void*)data)); }
 
-            T* get_ptr() { return data; }
+            void* get_ptr() { return data; }
+            shape get_shape() { return dims; }
             size_t get_size() { return size; }
         };
     }  // namespace memory

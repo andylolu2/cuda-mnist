@@ -12,8 +12,10 @@
     { cuda_assert(__VA_ARGS__, #__VA_ARGS__, __FILE__, __LINE__); }
 inline void cuda_assert(cudaError status, const char *expr, const char *file, int line) {
     if (status != cudaSuccess) {
-        printf("CUDA error at %s:%d, status=%d (%s) in '%s'\n", file, line, (int)status,
-               cudaGetErrorString(status), expr);
+        printf(
+            "CUDA error at %s:%d, status=%d (%s) in '%s'\n", file, line, (int)status,
+            cudaGetErrorString(status), expr
+        );
         exit(status);
     }
 }
@@ -22,15 +24,21 @@ inline void cuda_assert(cudaError status, const char *expr, const char *file, in
     { check_cudnn_error(__VA_ARGS__, #__VA_ARGS__, __FILE__, __LINE__); }
 inline void check_cudnn_error(cudnnStatus_t status, const char *expr, const char *file, int line) {
     if (status != CUDNN_STATUS_SUCCESS) {
-        printf("CUDNN error at %s:%d, status=%d (%s) in '%s'\n", file, line, (int)status,
-               cudnnGetErrorString(status), expr);
+        printf(
+            "CUDNN error at %s:%d, status=%d (%s) in '%s'\n", file, line, (int)status,
+            cudnnGetErrorString(status), expr
+        );
         exit(status);
     }
 }
 
 int64_t hashString(std::string s);
 
-cudnnStatus_t execute_cached_plan(cudnnHandle_t handle,
-                                  cudnn_frontend::ExecutionPlanCache &plan_cache,
-                                  cudnn_frontend::OperationGraph &opGraph,
-                                  std::set<std::pair<uint64_t, void *>> &data_ptrs);
+size_t cudnn_dtype_size(cudnnDataType_t dtype);
+
+std::string cudnn_value_to_str(void *ptr, cudnnDataType_t dtype);
+
+cudnnStatus_t execute_ops(
+    cudnnHandle_t handle, cudnn_frontend::ExecutionPlanCache &plan_cache, lib::Ops &ops,
+    lib::DataPtrs &data_ptrs
+);
