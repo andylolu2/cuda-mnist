@@ -20,19 +20,22 @@
 
 namespace lib {
     namespace ops {
-        void batched_matmul_bias_relu(
-            cutlass::HostTensor<Element, BatchedLayout>& x,
-            cutlass::HostTensor<Element, BatchedLayout>& w,
-            cutlass::HostTensor<Element, BatchedLayout>& b,
-            cutlass::HostTensor<Element, BatchedLayout>& y
-        ) {
-            /* Computes y = ReLU(x @ w + b) */
+        using Layout = cutlass::layout::RowMajor;
 
+        void batched_matmul_bias_relu(
+            cutlass::HostTensor<Element, Layout>& x,                               // (B D1)
+            cutlass::HostTensor<Element, Layout>& w,                               // (D2 D1)
+            cutlass::HostTensor<Element, cutlass::layout::PackedVectorLayout>& b,  // (D2)
+            cutlass::HostTensor<Element, Layout>& y                                // (B D2)
+        ) {
             using EpilogueOp = cutlass::epilogue::thread::LinearCombinationRelu<
                 Element,                                     // data type of output matrix
                 128 / cutlass::sizeof_bits<Element>::value,  // num elements per memory access
-                Element, Element>;
-            using Gemm = cutlass::gemm::device::GemmBatched<
+                Element,                                     // data type of accumulator
+                Element,                                     // data type of linear combination
+                cutlass::epilogue::thread::ScaleType::NoBetaScaling  // no beta
+                >;
+            using Gemm = cutlass::gemm::device::Gemm<
                 Element,                                 // Data type of A matrix
                 Layout,                                  // Layout of batch items of A matrix
                 Element,                                 // Data type of B matrix
@@ -45,32 +48,24 @@ namespace lib {
                 cutlass::gemm::GemmShape<128, 256, 32>,  // threadblock tile (M N K)
                 cutlass::gemm::GemmShape<64, 64, 32>,    // warp tile (M N K)
                 cutlass::gemm::GemmShape<16, 8, 8>,      // MMA Op tile (M N K)
-                EpilogueOp,                              // Add bias and apply ReLU
-                cutlass::gemm::threadblock::GemmBatchedIdentityThreadblockSwizzle,
-                2  // Number of stages in the pipelined mainloop
+                EpilogueOp                               // Add bias and apply ReLU
                 >;
             Gemm gemm_op;
 
             check_cutlass(gemm_op({
                 {
-                    x.extent().row(),     // M
-                    w.extent().row(),     // N
-                    x.extent().column(),  // K
+                    x.extent().row(),     // B
+                    w.extent().row(),     // D2
+                    x.extent().column(),  // D1
                 },
-                {x.device_data(), x.layout().stride_row()},
-                x.layout().stride_batch(),
-                {w.device_data(), w.layout().stride_row()},
-                w.layout().stride_batch(),
-                {b.device_data(), b.layout().stride_row()},
-                b.layout().stride_batch(),
-                {y.device_data(), y.layout().stride_row()},
-                y.layout().stride_batch(),
+                x.device_ref(),
+                w.device_ref(),
+                {b.device_data(), 0},  // use stride of 0 to broadcast bias
+                y.device_ref(),
                 {
                     Element(1.0),  // alpha
                     Element(1.0),  // beta
-                    Element(0.0)   // ReLU threshold
                 },
-                x.extent().batch()  // num batches
             }));
         };
     }  // namespace ops

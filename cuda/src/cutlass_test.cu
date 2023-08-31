@@ -7,11 +7,13 @@
 
 #include <iostream>
 
+#include "cutlass/coord.h"
 #include "cutlass/cutlass.h"
 #include "cutlass/tensor_view.h"
 #include "cutlass/util/reference/device/tensor_foreach.h"
 #include "lib/3d_layout.h"
 #include "lib/operators/matmul_bias_relu.h"
+#include "lib/operators/matmul_bias_relu_bwd.h"
 
 using Tensor3D = cutlass::HostTensor<cutlass::half_t, cutlass::layout::BatchedRowMajor>;
 
@@ -114,35 +116,46 @@ cudaError_t cutlass_strided_batched_sgemm(
 }
 
 int main() {
-    int batch = 8;
-    int M = 1;
-    int N = 32;
-    int K = 8;
+    int batch = 2;
+    int D_in = 16;
+    int D_out = 16;
 
-    Tensor3D x({batch, M, K});
-    Tensor3D y({batch, N, K});
-    Tensor3D z({batch, M, N});
-    Tensor3D f({batch, M, N});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::RowMajor> x({batch, D_in});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::RowMajor> w({D_out, D_in});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::PackedVectorLayout> b(cutlass::Coord<1>{
+        D_out});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::RowMajor> y({batch, D_out});
 
-    cutlass::reference::device::TensorFillRandomUniform(x.device_view(), 42, 1.0_hf, -1.0_hf);
-    cutlass::reference::device::TensorFillRandomUniform(y.device_view(), 41, 1.0_hf, -1.0_hf);
-    // cutlass::reference::device::TensorFill(y.device_view(), 1.0_hf);
+    cutlass::reference::device::TensorFillRandomGaussian(x.device_view(), 42);
+    // cutlass::reference::device::TensorFillRandomUniform(w.device_view(), 41, 1.0_hf, -1.0_hf);
+    cutlass::reference::device::TensorFillIdentity(w.device_view());
     // cutlass::reference::device::TensorFill(z.device_view(), 1.5_hf);
 
     // multiply<cutlass::half_t, Tensor3D::Layout>(x.device_view(), -1.0_hf);
 
     x.sync_host();
+    w.sync_host();
     y.sync_host();
-    z.sync_host();
 
     std::cout << "x:\n" << x.host_view() << "\n" << std::endl;
+    std::cout << "w:\n" << w.host_view() << "\n" << std::endl;
     std::cout << "y:\n" << y.host_view() << "\n" << std::endl;
-    std::cout << "z:\n" << z.host_view() << "\n" << std::endl;
 
-    lib::ops::batched_matmul_bias_relu(x, y, z, z);
+    lib::ops::batched_matmul_bias_relu(x, w, b, y);
 
-    z.sync_host();
-    std::cout << "z:\n" << z.host_view() << "\n" << std::endl;
+    y.sync_host();
+
+    std::cout << "y:\n" << y.host_view() << "\n" << std::endl;
+
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::RowMajor> dx({batch, D_in});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::RowMajor> dw({D_out, D_in});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::PackedVectorLayout> db(cutlass::Coord<1>{
+        D_out});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::RowMajor> dy({batch, D_out});
+    cutlass::HostTensor<float, cutlass::layout::RowMajor> d_after_bias({batch, D_out});
+    cutlass::HostTensor<float, cutlass::layout::PackedVectorLayout> b_(cutlass::Coord<1>{D_out});
+
+    lib::ops::batched_matmul_bias_relu_bwd(x, w, b_, dy, db, dw, dx, d_after_bias);
 
     return 0;
 }

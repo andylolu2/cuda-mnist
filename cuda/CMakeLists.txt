@@ -40,6 +40,7 @@ add_executable(
     cutlass_test
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cutlass_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/operators/matmul_bias_relu.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/operators/matmul_bias_relu_bwd.cu
 )
 set_target_properties(cutlass_test PROPERTIES CUDA_ARCHITECTURES 75)
 
@@ -51,6 +52,25 @@ target_compile_options(
 
 target_include_directories(
     cutlass_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+)
+
+add_executable(
+    cute_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cute_test.cu
+)
+set_target_properties(cutlass_test PROPERTIES CUDA_ARCHITECTURES 75)
+
+target_compile_options(
+    cute_test PRIVATE
+    -Wall
+    -Wno-unused-function
+)
+
+target_include_directories(
+    cute_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include

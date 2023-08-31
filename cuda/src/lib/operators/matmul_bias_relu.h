@@ -8,16 +8,16 @@
 
 namespace lib {
     namespace ops {
-        using BatchedLayout = cutlass::layout::BatchedRowMajor;
-        using Layout = BatchedLayout::SubLayout;
+        using Layout = cutlass::layout::RowMajor;
         using Element = cutlass::half_t;
 
         /* Computes y = ReLU(x @ w + b) */
+
         void batched_matmul_bias_relu(
-            cutlass::HostTensor<Element, BatchedLayout>& x,
-            cutlass::HostTensor<Element, BatchedLayout>& w,
-            cutlass::HostTensor<Element, BatchedLayout>& b,
-            cutlass::HostTensor<Element, BatchedLayout>& y
+            cutlass::HostTensor<Element, Layout>& x,                               // (B D1)
+            cutlass::HostTensor<Element, Layout>& w,                               // (D2 D1)
+            cutlass::HostTensor<Element, cutlass::layout::PackedVectorLayout>& b,  // (D2)
+            cutlass::HostTensor<Element, Layout>& y                                // (B D2)
         );
     }  // namespace ops
 }  // namespace lib

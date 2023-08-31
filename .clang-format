@@ -4,4 +4,6 @@ TabWidth: 4
 UseTab: Never
 ColumnLimit: 100
 NamespaceIndentation: All
-AlignAfterOpenBracket: BlockIndent
+AlignAfterOpenBracket: AlwaysBreak
+BinPackArguments: false
+BinPackParameters: false
