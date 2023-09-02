@@ -39,8 +39,6 @@ target_link_libraries(
 add_executable(
     cutlass_test
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cutlass_test.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/operators/matmul_bias_relu.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/operators/matmul_bias_relu_bwd.cu
 )
 set_target_properties(cutlass_test PROPERTIES CUDA_ARCHITECTURES 75)
 
@@ -67,6 +65,7 @@ target_compile_options(
     cute_test PRIVATE
     -Wall
     -Wno-unused-function
+    --expt-relaxed-constexpr
 )
 
 target_include_directories(

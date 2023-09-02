@@ -1,7 +1,0 @@
-template <typename T>
-__global__ void fill_kernel(T* devPtr, const T val, const size_t nwords) {
-    int idx = threadIdx.x + blockDim.x * blockIdx.x;
-    int stride = blockDim.x * gridDim.x;
-
-    for (; idx < nwords; idx += stride) devPtr[idx] = val;
-}
