@@ -3,7 +3,6 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
-#include <cute/atom/copy_atom.hpp>
 #include <cute/tensor.hpp>
 
 namespace lib {
