@@ -54,6 +54,9 @@ int main(int argc, char const *argv[]) {
     cutlass::DeviceAllocation<cutlass::half_t> dx_data(M * K);
     Tensor dx = make_tensor(make_gmem_ptr(dx_data.get()), make_shape(M, K));
 
+    cutlass::DeviceAllocation<int> y_true_data(M);
+    Tensor y_true = make_tensor(make_gmem_ptr(y_true_data.get()), make_shape(M));
+
     // cutlass::DeviceAllocation<cutlass::half_t> dw_data(N * K);
     // Tensor dw = make_tensor(make_gmem_ptr(dw_data.get()), make_shape(N, K));
 
@@ -62,7 +65,8 @@ int main(int argc, char const *argv[]) {
     // Tensor db_expanded =
     //     make_tensor(make_gmem_ptr(db_data.get()), make_shape(M, N), make_stride(0, 1));
 
-    lib::init::arange<<<1, 64>>>(x, 0.0f, 0.1f);
+    lib::init::arange<<<1, 64>>>(x, -1.0_hf, 0.1_hf);
+    lib::init::arange<<<1, 64>>>(y_true);
 
     lib::print_device_tensor("Tensor y sum", y_sum);
     lib::print_device_tensor("Tensor x", x);
@@ -89,6 +93,9 @@ int main(int argc, char const *argv[]) {
     linear.backward(x, dy, dx);
     // lib::op::matmul_bias_bwd(x, w, b_expanded, dy, dx, dw, db_expanded);
 
+    lib::op::cross_entropy_with_logits_bwd<1><<<1, 64>>>(y, y_true, dy);
+
+    lib::print_device_tensor("y_true", y_true);
     lib::print_device_tensor("dy", dy);
     lib::print_device_tensor("dx", dx);
     lib::print_device_tensor("dw", linear.weight_grad());
