@@ -9,8 +9,8 @@
 #include "lib/matmul_bias_pointwise.cuh"
 #include "lib/op/add.cuh"
 #include "lib/op/constant.cuh"
-#include "lib/op/normal.cuh"
 #include "lib/op/sgd.cuh"
+#include "lib/op/unary_pointwise.cuh"
 #include "lib/tensor_ops.cuh"
 
 using namespace cute;
@@ -55,7 +55,23 @@ namespace lib {
                   dw(make_tensor(
                       make_gmem_ptr(dw_data.get()), make_shape(out_features, in_features))),
                   db(make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features))) {}
-            ~Linear() {}
+
+            // Move constructor
+            Linear(Linear&& other)
+                : in_features(other.in_features),
+                  out_features(other.out_features),
+                  w_data(std::move(other.w_data)),
+                  b_data(std::move(other.b_data)),
+                  dw_data(std::move(other.dw_data)),
+                  db_data(std::move(other.db_data)),
+                  w(make_tensor(
+                      make_gmem_ptr(w_data.get()), make_shape(out_features, in_features))),
+                  b(make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features))),
+                  dw(make_tensor(
+                      make_gmem_ptr(dw_data.get()), make_shape(out_features, in_features))),
+                  db(make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features))) {}
+
+            ~Linear() = default;
 
             auto weight() { return w; }
 
@@ -66,8 +82,20 @@ namespace lib {
             auto bias_grad() { return db; }
 
             void init() {
-                lib::op::normal(w, ParamType(0.0), ParamType(0.01));
-                lib::op::normal(b, ParamType(0.0), ParamType(0.01));
+                float fan_in = static_cast<float>(in_features);
+                {
+                    // Kaiming uniform
+                    float gain = std::sqrt(2.0f);
+                    float std = gain / std::sqrt(fan_in);
+                    float upper = std::sqrt(3.0f) * std;
+                    float lower = -upper;
+                    lib::op::uniform(w, w, lower, upper);
+                }
+                {
+                    float upper = std::sqrt(1.0f / fan_in);
+                    float lower = -upper;
+                    lib::op::uniform(b, b, lower, upper);
+                }
             }
 
             template <typename EngineX, typename LayoutX, typename EngineY, typename LayoutY>
@@ -87,8 +115,8 @@ namespace lib {
                 typename EngineDx,
                 typename LayoutDx>
             void backward(
-                Tensor<EngineX, LayoutX>& x,
-                Tensor<EngineY, LayoutY>& dy,
+                const Tensor<EngineX, LayoutX>& x,
+                const Tensor<EngineY, LayoutY>& dy,
                 Tensor<EngineDx, LayoutDx>& dx) {
                 if (relu) {
                     lib::op::relu_matmul_bias_bwd(x, w, b, dy, dx, dw, db);
@@ -110,7 +138,7 @@ namespace lib {
             template <typename ParamType_, typename GradType_>
             friend std::ostream& operator<<(
                 std::ostream& os, const Linear<ParamType_, GradType_>& linear);
-        };
+        };  // namespace module
 
         template <typename ParamType_, typename GradType_>
         std::ostream& operator<<(std::ostream& os, const Linear<ParamType_, GradType_>& linear) {

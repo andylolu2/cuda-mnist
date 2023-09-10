@@ -40,9 +40,9 @@ namespace lib {
             typename EngineC,
             typename LayoutC>
         void binary_pointwise(
-            Tensor<EngineA, LayoutA> tensor_a,
-            Tensor<EngineB, LayoutB> tensor_b,
-            Tensor<EngineC, LayoutC> output,
+            const Tensor<EngineA, LayoutA> &tensor_a,
+            const Tensor<EngineB, LayoutB> &tensor_b,
+            Tensor<EngineC, LayoutC> &output,
             BinaryFunc func) {
             assert(size(tensor_a) == size(tensor_b));
             assert(size(tensor_a) == size(output));

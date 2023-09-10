@@ -47,9 +47,9 @@ namespace lib {
                 using X = Underscore;
                 using TC = typename EngineC::value_type;
 
-                auto M = size<0>(mA.shape());
-                auto N = size<0>(mB.shape());
-                auto K = size<1>(mA.shape());
+                auto M = size<0>(mA);
+                auto N = size<0>(mB);
+                auto K = size<1>(mA);
                 auto BLK_M = shape<0>(blockC);
                 auto BLK_N = shape<1>(blockC);
                 auto BLK_K = shape<1>(blockA);
@@ -102,22 +102,25 @@ namespace lib {
                 typename EngineD,
                 typename LayoutD>
             void matmul_bias_pointwise(
-                Tensor<EngineA, LayoutA> &x,
-                Tensor<EngineB, LayoutB> &w,
-                Tensor<EngineC, LayoutC> &b,
+                const Tensor<EngineA, LayoutA> &x,
+                const Tensor<EngineB, LayoutB> &w,
+                const Tensor<EngineC, LayoutC> &b,
                 Tensor<EngineD, LayoutD> &y) {
                 static_assert(LayoutA::rank == 2, "x must be a matrix");
                 static_assert(LayoutB::rank == 2, "w must be a matrix");
                 static_assert(LayoutC::rank == 1, "b must be a vector");
                 static_assert(LayoutD::rank == 2, "y must be a matrix");
 
-                assert(size<0>(y.shape()) == size<0>(x.shape()));  // match M
-                assert(size<1>(y.shape()) == size<0>(w.shape()));  // match N
-                assert(size<1>(w.shape()) == size<1>(x.shape()));  // match K
+                auto M = size<0>(x);
+                auto N = size<0>(w);
+                auto K = size<1>(x);
 
-                Tensor b_expanded = lib::op::expand<0>(b, size<0>(y));  // (N) -> (M N)
+                assert(x.shape() == make_shape(M, K));
+                assert(w.shape() == make_shape(N, K));
+                assert(b.shape() == make_shape(N));
+                assert(y.shape() == make_shape(M, N));
 
-                assert(b_expanded.shape() == y.shape());
+                Tensor b_expanded = lib::op::expand<0>(b, M);  // (N) -> (M N)
 
                 // Define block sizes (static)
                 auto bM = Int<128>{};
@@ -137,9 +140,6 @@ namespace lib {
                 auto tC = make_layout(
                     make_shape(Int<16>{}, Int<16>{}));  // partitioning (bM bN) for compute
 
-                auto M = size<0>(x.shape());
-                auto N = size<0>(w.shape());
-                auto K = size<1>(x.shape());
                 dim3 dimBlock(size(tC));
                 dim3 dimGrid(ceil_div(M, bM), ceil_div(N, bN));
 
@@ -157,17 +157,10 @@ namespace lib {
                 typename EngineC,
                 typename LayoutC>
             void matmul_pointwise(
-                Tensor<EngineA, LayoutA> &x,
-                Tensor<EngineB, LayoutB> &w,
+                const Tensor<EngineA, LayoutA> &x,
+                const Tensor<EngineB, LayoutB> &w,
                 Tensor<EngineC, LayoutC> &y) {
                 using TC = typename EngineC::value_type;
-                static_assert(LayoutA::rank == 2, "x must be a matrix");
-                static_assert(LayoutB::rank == 2, "w must be a matrix");
-                static_assert(LayoutC::rank == 2, "y must be a matrix");
-
-                assert(size<0>(y.shape()) == size<0>(x.shape()));  // match M
-                assert(size<1>(y.shape()) == size<0>(w.shape()));  // match N
-                assert(size<1>(w.shape()) == size<1>(x.shape()));  // match K
 
                 DeviceAllocation<TC> b_data(1);
                 Tensor b = make_tensor(
@@ -186,7 +179,9 @@ namespace lib {
             typename EngineC,
             typename LayoutC>
         void matmul(
-            Tensor<EngineA, LayoutA> &x, Tensor<EngineB, LayoutB> &w, Tensor<EngineC, LayoutC> &y) {
+            const Tensor<EngineA, LayoutA> &x,
+            const Tensor<EngineB, LayoutB> &w,
+            Tensor<EngineC, LayoutC> &y) {
             detail::matmul_pointwise<lib::func::Identity, lib::func::Identity>(x, w, y);
         }
 
@@ -200,9 +195,9 @@ namespace lib {
             typename EngineD,
             typename LayoutD>
         void matmul_bias_relu(
-            Tensor<EngineA, LayoutA> &x,
-            Tensor<EngineB, LayoutB> &w,
-            Tensor<EngineC, LayoutC> &b,
+            const Tensor<EngineA, LayoutA> &x,
+            const Tensor<EngineB, LayoutB> &w,
+            const Tensor<EngineC, LayoutC> &b,
             Tensor<EngineD, LayoutD> &y) {
             detail::matmul_bias_pointwise<lib::func::Identity, lib::func::ReLU>(x, w, b, y);
         }
@@ -217,9 +212,9 @@ namespace lib {
             typename EngineD,
             typename LayoutD>
         void matmul_bias(
-            Tensor<EngineA, LayoutA> &x,
-            Tensor<EngineB, LayoutB> &w,
-            Tensor<EngineC, LayoutC> &b,
+            const Tensor<EngineA, LayoutA> &x,
+            const Tensor<EngineB, LayoutB> &w,
+            const Tensor<EngineC, LayoutC> &b,
             Tensor<EngineD, LayoutD> &y) {
             detail::matmul_bias_pointwise<lib::func::Identity, lib::func::Identity>(x, w, b, y);
         }
@@ -234,9 +229,9 @@ namespace lib {
             typename EngineD,
             typename LayoutD>
         void relu_matmul_bias(
-            Tensor<EngineA, LayoutA> &x,
-            Tensor<EngineB, LayoutB> &w,
-            Tensor<EngineC, LayoutC> &b,
+            const Tensor<EngineA, LayoutA> &x,
+            const Tensor<EngineB, LayoutB> &w,
+            const Tensor<EngineC, LayoutC> &b,
             Tensor<EngineD, LayoutD> &y) {
             detail::matmul_bias_pointwise<lib::func::ReLU, lib::func::Identity>(x, w, b, y);
         }

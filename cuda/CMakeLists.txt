@@ -16,6 +16,7 @@ target_compile_options(
     -Wall
     -Wno-unused-function
     --expt-relaxed-constexpr
+    --extended-lambda
 )
 target_include_directories(
     cute_test PRIVATE

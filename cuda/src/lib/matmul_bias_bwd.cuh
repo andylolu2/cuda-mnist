@@ -33,16 +33,17 @@ namespace lib {
             typename EngineG,
             typename LayoutG>
         void matmul_bias_bwd(
-            Tensor<EngineA, LayoutA> &x,
-            Tensor<EngineB, LayoutB> &w,
-            Tensor<EngineC, LayoutC> &b,
-            Tensor<EngineD, LayoutD> &dy,
+            const Tensor<EngineA, LayoutA> &x,
+            const Tensor<EngineB, LayoutB> &w,
+            const Tensor<EngineC, LayoutC> &b,
+            const Tensor<EngineD, LayoutD> &dy,
             Tensor<EngineE, LayoutE> &dx,
             Tensor<EngineF, LayoutF> &dw,
             Tensor<EngineG, LayoutG> &db) {
             // dw (N K) = dy.T (N M) @ x.T (K M)
             Tensor dy_T = transpose<0, 1>(dy);
             Tensor x_T = transpose<0, 1>(x);
+
             matmul(dy_T, x_T, dw);
 
             // db = sum(dy, axis=0)
@@ -69,10 +70,10 @@ namespace lib {
             typename EngineG,
             typename LayoutG>
         void relu_matmul_bias_bwd(
-            Tensor<EngineA, LayoutA> &x,
-            Tensor<EngineB, LayoutB> &w,
-            Tensor<EngineC, LayoutC> &b,
-            Tensor<EngineD, LayoutD> &dy,
+            const Tensor<EngineA, LayoutA> &x,
+            const Tensor<EngineB, LayoutB> &w,
+            const Tensor<EngineC, LayoutC> &b,
+            const Tensor<EngineD, LayoutD> &dy,
             Tensor<EngineE, LayoutE> &dx,
             Tensor<EngineF, LayoutF> &dw,
             Tensor<EngineG, LayoutG> &db) {

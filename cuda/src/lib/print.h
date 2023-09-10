@@ -13,13 +13,15 @@ namespace lib {
         using T = typename Engine::value_type;
 
         std::vector<T> host_mem(size(tensor));
+        Tensor host_tensor = make_tensor(host_mem.data(), tensor.shape());
 
-        for (size_t i = 0; i < host_mem.size(); ++i) {
+        for (int i = 0; i < size(tensor); i++) {
             T *dev_ptr = (tensor.engine().begin() + tensor.layout()(i)).get();
-            copy_to_host(host_mem.data() + i, dev_ptr, 1);
+            T *host_ptr = host_tensor.engine().begin() + host_tensor.layout()(i);
+            copy_to_host(host_ptr, dev_ptr, 1);
         }
 
-        std::cout << make_tensor(host_mem.data(), tensor.layout()) << std::endl;
+        std::cout << host_tensor << std::endl;
     }
 
     template <typename Engine, typename Layout>
