@@ -7,48 +7,48 @@
 #include "lib/fill.h"
 #include "lib/matmul_bias_bwd.cuh"
 #include "lib/matmul_bias_pointwise.cuh"
+#include "lib/op/add.cuh"
+#include "lib/op/constant.cuh"
+#include "lib/op/normal.cuh"
+#include "lib/op/sgd.cuh"
+#include "lib/tensor_ops.cuh"
 
 using namespace cute;
 using namespace cutlass;
 
 namespace lib {
     namespace module {
-        template <typename WType, typename BType, typename GradType>
+        template <typename ParamType, typename GradType>
         class Linear {
+            using WShape = Shape<int, int>;
+            using BShape = Shape<int>;
+            using WTensor = Tensor<ViewEngine<gmem_ptr<ParamType>>, Layout<WShape>>;
+            using BTensor = Tensor<ViewEngine<gmem_ptr<ParamType>>, Layout<BShape>>;
+            using DwTensor = Tensor<ViewEngine<gmem_ptr<GradType>>, Layout<WShape>>;
+            using DbTensor = Tensor<ViewEngine<gmem_ptr<GradType>>, Layout<BShape>>;
+
            private:
             int in_features;
             int out_features;
-            DeviceAllocation<WType> w_data;
-            DeviceAllocation<BType> b_data;
+            DeviceAllocation<ParamType> w_data;
+            DeviceAllocation<ParamType> b_data;
             DeviceAllocation<GradType> dw_data;
             DeviceAllocation<GradType> db_data;
-            Tensor<ViewEngine<gmem_ptr<WType>>, Layout<Shape<int, int>>> w;
-            Tensor<ViewEngine<gmem_ptr<BType>>, Layout<Shape<int>>> b;
-            Tensor<ViewEngine<gmem_ptr<GradType>>, Layout<Shape<int, int>>> dw;
-            Tensor<ViewEngine<gmem_ptr<GradType>>, Layout<Shape<int>>> db;
-
-            auto b_expanded(int batch_size) {
-                return make_tensor(
-                    make_gmem_ptr(b_data.get()),
-                    make_shape(batch_size, out_features),
-                    make_stride(0, 1));
-            }
-
-            auto db_expanded(int batch_size) {
-                return make_tensor(
-                    make_gmem_ptr(db_data.get()),
-                    make_shape(batch_size, out_features),
-                    make_stride(0, 1));
-            }
+            WTensor w;
+            BTensor b;
+            DwTensor dw;
+            DbTensor db;
+            bool relu;
 
            public:
-            Linear(int in_features, int out_features)
+            Linear(int in_features, int out_features, bool relu = false)
                 : in_features(in_features),
                   out_features(out_features),
                   w_data(in_features * out_features),
                   b_data(out_features),
                   dw_data(in_features * out_features),
                   db_data(out_features),
+                  relu(relu),
                   w(make_tensor(
                       make_gmem_ptr(w_data.get()), make_shape(out_features, in_features))),
                   b(make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features))),
@@ -63,18 +63,20 @@ namespace lib {
 
             auto weight_grad() { return dw; }
 
-            auto biad_grad() { return db; }
+            auto bias_grad() { return db; }
 
             void init() {
-                lib::init::arange<<<1, 64>>>(w, 0.0f, 0.05f);
-                lib::init::arange<<<1, 64>>>(b);
+                lib::op::normal(w, ParamType(0.0), ParamType(0.01));
+                lib::op::normal(b, ParamType(0.0), ParamType(0.01));
             }
 
             template <typename EngineX, typename LayoutX, typename EngineY, typename LayoutY>
             void forward(Tensor<EngineX, LayoutX>& x, Tensor<EngineY, LayoutY>& y) {
-                int batch_size = size<0>(x);
-                auto b_expand = b_expanded(batch_size);
-                lib::op::matmul_bias(x, w, b_expand, y);
+                if (relu) {
+                    lib::op::relu_matmul_bias(x, w, b, y);
+                } else {
+                    lib::op::matmul_bias(x, w, b, y);
+                }
             }
 
             template <
@@ -88,20 +90,30 @@ namespace lib {
                 Tensor<EngineX, LayoutX>& x,
                 Tensor<EngineY, LayoutY>& dy,
                 Tensor<EngineDx, LayoutDx>& dx) {
-                int batch_size = size<0>(x);
-                auto b_expand = b_expanded(batch_size);
-                auto db_expand = db_expanded(batch_size);
-                lib::op::matmul_bias_bwd(x, w, b_expand, dy, dx, dw, db_expand);
+                if (relu) {
+                    lib::op::relu_matmul_bias_bwd(x, w, b, dy, dx, dw, db);
+                } else {
+                    lib::op::matmul_bias_bwd(x, w, b, dy, dx, dw, db);
+                }
             }
 
-            template <typename WType_, typename BType_, typename GradType_>
+            void update(GradType lr) {
+                lib::op::sgd(w, dw, lr);
+                lib::op::sgd(b, db, lr);
+            }
+
+            void clear_grad() {
+                lib::op::constant(dw);
+                lib::op::constant(db);
+            }
+
+            template <typename ParamType_, typename GradType_>
             friend std::ostream& operator<<(
-                std::ostream& os, const Linear<WType_, BType_, GradType_>& linear);
+                std::ostream& os, const Linear<ParamType_, GradType_>& linear);
         };
 
-        template <typename WType_, typename BType_, typename GradType_>
-        std::ostream& operator<<(
-            std::ostream& os, const Linear<WType_, BType_, GradType_>& linear) {
+        template <typename ParamType_, typename GradType_>
+        std::ostream& operator<<(std::ostream& os, const Linear<ParamType_, GradType_>& linear) {
             os << "Linear(" << linear.in_features << ", " << linear.out_features << ")";
             return os;
         }

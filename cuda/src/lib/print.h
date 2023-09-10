@@ -12,9 +12,12 @@ namespace lib {
     void print_device_tensor(Tensor<Engine, Layout> const &tensor) {
         using T = typename Engine::value_type;
 
-        std::vector<T> host_mem(tensor.size());
+        std::vector<T> host_mem(size(tensor));
 
-        copy_to_host(host_mem.data(), tensor.data().get(), tensor.size());
+        for (size_t i = 0; i < host_mem.size(); ++i) {
+            T *dev_ptr = (tensor.engine().begin() + tensor.layout()(i)).get();
+            copy_to_host(host_mem.data() + i, dev_ptr, 1);
+        }
 
         std::cout << make_tensor(host_mem.data(), tensor.layout()) << std::endl;
     }

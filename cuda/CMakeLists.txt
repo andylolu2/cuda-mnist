@@ -41,3 +41,20 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
 )
+
+add_executable(
+    playground
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/playground.cu
+)
+set_target_properties(playground PROPERTIES CUDA_ARCHITECTURES 75)
+target_compile_options(
+    playground PRIVATE
+    -Wall
+    -Wno-unused-function
+)
+target_include_directories(
+    playground PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+)

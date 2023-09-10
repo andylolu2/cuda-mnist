@@ -16,9 +16,9 @@ namespace lib {
             }
         };
         struct dReLU {
-            template <typename T>
-            CUTE_HOST_DEVICE T operator()(T &x) {
-                return x > T(0) ? T(1) : T(0);
+            template <typename TA, typename TB>
+            CUTE_HOST_DEVICE TA operator()(TA &dy, TB &x) {
+                return TA(x > TB(0) ? dy : 0);
             }
         };
     }  // namespace func

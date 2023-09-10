@@ -1,13 +1,17 @@
 #pragma once
 #include <cutlass/numeric_types.h>
+#include <cutlass/util/device_memory.h>
 
 #include <cute/algorithm/gemm.hpp>
 #include <cute/tensor.hpp>
 
 #include "lib/functions.cuh"
 #include "lib/gemm_device.cuh"
+#include "lib/op/constant.cuh"
+#include "lib/tensor_ops.cuh"
 
 using namespace cute;
+using namespace cutlass;
 
 namespace lib {
     namespace op {
@@ -102,12 +106,18 @@ namespace lib {
                 Tensor<EngineB, LayoutB> &w,
                 Tensor<EngineC, LayoutC> &b,
                 Tensor<EngineD, LayoutD> &y) {
-                using TC = typename EngineC::value_type;
+                static_assert(LayoutA::rank == 2, "x must be a matrix");
+                static_assert(LayoutB::rank == 2, "w must be a matrix");
+                static_assert(LayoutC::rank == 1, "b must be a vector");
+                static_assert(LayoutD::rank == 2, "y must be a matrix");
 
                 assert(size<0>(y.shape()) == size<0>(x.shape()));  // match M
                 assert(size<1>(y.shape()) == size<0>(w.shape()));  // match N
                 assert(size<1>(w.shape()) == size<1>(x.shape()));  // match K
-                assert(b.shape() == y.shape());
+
+                Tensor b_expanded = lib::op::expand<0>(b, size<0>(y));  // (N) -> (M N)
+
+                assert(b_expanded.shape() == y.shape());
 
                 // Define block sizes (static)
                 auto bM = Int<128>{};
@@ -134,9 +144,52 @@ namespace lib {
                 dim3 dimGrid(ceil_div(M, bM), ceil_div(N, bN));
 
                 matmul_bias_pointwise_device<PointwisePrologueOp, PointwiseEpilogueOp>
-                    <<<dimGrid, dimBlock>>>(x, w, b, y, sA, tA, sB, tB, sC, tC);
+                    <<<dimGrid, dimBlock>>>(x, w, b_expanded, y, sA, tA, sB, tB, sC, tC);
+            }
+
+            template <
+                typename PointwisePrologueOp,
+                typename PointwiseEpilogueOp,
+                typename EngineA,
+                typename LayoutA,
+                typename EngineB,
+                typename LayoutB,
+                typename EngineC,
+                typename LayoutC>
+            void matmul_pointwise(
+                Tensor<EngineA, LayoutA> &x,
+                Tensor<EngineB, LayoutB> &w,
+                Tensor<EngineC, LayoutC> &y) {
+                using TC = typename EngineC::value_type;
+                static_assert(LayoutA::rank == 2, "x must be a matrix");
+                static_assert(LayoutB::rank == 2, "w must be a matrix");
+                static_assert(LayoutC::rank == 2, "y must be a matrix");
+
+                assert(size<0>(y.shape()) == size<0>(x.shape()));  // match M
+                assert(size<1>(y.shape()) == size<0>(w.shape()));  // match N
+                assert(size<1>(w.shape()) == size<1>(x.shape()));  // match K
+
+                DeviceAllocation<TC> b_data(1);
+                Tensor b = make_tensor(
+                    make_gmem_ptr(b_data.get()), make_shape(size<1>(y)), make_stride(0));
+                lib::op::constant(b);
+
+                matmul_bias_pointwise<PointwisePrologueOp, PointwiseEpilogueOp>(x, w, b, y);
             }
         }  // namespace detail
+
+        template <
+            typename EngineA,
+            typename LayoutA,
+            typename EngineB,
+            typename LayoutB,
+            typename EngineC,
+            typename LayoutC>
+        void matmul(
+            Tensor<EngineA, LayoutA> &x, Tensor<EngineB, LayoutB> &w, Tensor<EngineC, LayoutC> &y) {
+            detail::matmul_pointwise<lib::func::Identity, lib::func::Identity>(x, w, y);
+        }
+
         template <
             typename EngineA,
             typename LayoutA,
