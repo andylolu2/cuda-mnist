@@ -3,3 +3,5 @@ cuda/build/
 .vscode/settings.json
 
 data/
+
+torch/.pytorch

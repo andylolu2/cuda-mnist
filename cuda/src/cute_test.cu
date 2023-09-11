@@ -1,6 +1,7 @@
 #include <cutlass/numeric_types.h>
 #include <cutlass/util/device_memory.h>
 
+#include <chrono>
 #include <cute/tensor.hpp>
 #include <iomanip>
 
@@ -16,7 +17,7 @@
 
 #define W 28
 #define H 28
-#define B 32
+#define B 16
 #define CLASSES 10
 
 using namespace cute;
@@ -50,8 +51,10 @@ int main(int argc, char const* argv[]) {
     DeviceAllocation<float> dx_data(B * W * H);
     Tensor dx = make_tensor(make_gmem_ptr(dx_data.get()), make_shape(B, W * H));
 
-    lib::module::MLP<half_t, float, half_t> mlp(W * H, {512, 256, CLASSES}, B);
+    lib::module::MLP<half_t, float, half_t> mlp(W * H, {128, CLASSES}, B);
     mlp.init();
+
+    const auto start_time = std::chrono::system_clock::now();
 
     // Forward pass
     for (int step = 0; step < 5000; step++) {
@@ -64,10 +67,10 @@ int main(int argc, char const* argv[]) {
 
         mlp.forward(x, y);
 
-        lib::op::cross_entropy_with_logits_fwd(y, y_true, loss);
-        Tensor loss_expanded = lib::op::expand<1>(loss, 1);  // (B) -> (B, 1)
-        lib::op::mean<0>(loss_expanded, loss_scalar);        // (B, 1) -> (1)
-        lib::print_device_tensor("loss", loss_scalar);
+        // lib::op::cross_entropy_with_logits_fwd(y, y_true, loss);
+        // Tensor loss_expanded = lib::op::expand<1>(loss, 1);  // (B) -> (B, 1)
+        // lib::op::mean<0>(loss_expanded, loss_scalar);        // (B, 1) -> (1)
+        // lib::print_device_tensor("loss", loss_scalar);
 
         lib::op::cross_entropy_with_logits_bwd(y, y_true, dy);
         mlp.backward(x, dy, dx);
@@ -75,6 +78,12 @@ int main(int argc, char const* argv[]) {
         mlp.update(0.003);
         mlp.clear_grad();
     }
+
+    const auto end_time = std::chrono::system_clock::now();
+    const auto duration_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    const auto duration_s = duration_ms / 1000.0;
+    std::cout << "Duration: " << duration_s << "s" << std::endl;
 
     return 0;
 }
