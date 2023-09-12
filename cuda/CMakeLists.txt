@@ -5,7 +5,6 @@ enable_language(CUDA CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# file(GLOB_RECURSE lib_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/*.cu)
 add_executable(
     cute_test
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cute_test.cu
@@ -25,24 +24,6 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
 )
 
-# MNIST
-add_executable(
-    mnist
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/mnist.cu
-)
-set_target_properties(mnist PROPERTIES CUDA_ARCHITECTURES 75)
-target_compile_options(
-    mnist PRIVATE
-    -Wall
-    -Wno-unused-function
-)
-target_include_directories(
-    mnist PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
-)
-
 add_executable(
     playground
     ${CMAKE_CURRENT_SOURCE_DIR}/src/playground.cu
@@ -55,6 +36,24 @@ target_compile_options(
 )
 target_include_directories(
     playground PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+)
+
+add_executable(
+    test_matmul
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/test_matmul.cu
+)
+set_target_properties(test_matmul PROPERTIES CUDA_ARCHITECTURES 75)
+target_compile_options(
+    test_matmul PRIVATE
+    -Wall
+    -Wno-unused-function
+    --expt-relaxed-constexpr
+)
+target_include_directories(
+    test_matmul PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include

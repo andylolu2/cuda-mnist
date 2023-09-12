@@ -1,17 +1,25 @@
 #pragma once
 #include <cutlass/arch/arch.h>
+#include <cutlass/cutlass.h>
 #include <cutlass/epilogue/thread/linear_combination.h>
+#include <cutlass/gemm/device/gemm_universal_adapter.h>
+#include <cutlass/gemm/gemm.h>
+#include <cutlass/gemm/kernel/gemm_universal.h>
+#include <cutlass/gemm_coord.h>
 #include <cutlass/numeric_types.h>
+#include <cutlass/util/device_memory.h>
 
 #include <cuda/std/type_traits>
 #include <cute/algorithm/gemm.hpp>
 #include <cute/atom/copy_atom.hpp>
 #include <cute/tensor.hpp>
+#include <cutlass/epilogue/collective/collective_epilogue.hpp>
 #include <cutlass/epilogue/collective/default_epilogue.hpp>
 #include <cutlass/gemm/collective/collective_mma.hpp>
 #include <cutlass/gemm/dispatch_policy.hpp>
 
 #include "lib/functions.cuh"
+#include "lib/helper.cuh"
 
 using namespace cute;
 
@@ -191,65 +199,96 @@ namespace lib {
         }
     }
 
-    // template <
-    //     typename ElementA,
-    //     typename StrideA,
-    //     typename ElementB,
-    //     typename StrideB,
-    //     typename ElementC,
-    //     typename StrideC,
-    //     typename ElementD,
-    //     typename StrideD>
-    // void gemm(ElementA *A, StrideA stride_A, ElementB *B, StrideB stride_B, ElementC *C) {
-    //     using DispatchPolicy = cutlass::gemm::MainloopSm70TwoStage;
-    //     using TileShape = cutlass::gemm::GemmShape<128, 128, 8>;  // (BLK_M BLK_N BLK_K)
-    //     using TiledMma = TiledMMA<MMA_Atom<UniversalFMA<ElementD, ElementA, ElementB,
-    //     ElementC>>>; using GmemTiledCopyA = SM75_U32x1_LDSM_N; using SmemLayoutAtomA = Layout<32,
-    //     8>;  // (tA.M tA.K) using SmemCopyAtomA = Copy_Atom<SM75_U32x1_LDSM_N, ElementA>; using
-    //     TransformA = cute::identity; using GmemTiledCopyB = SM75_U32x1_LDSM_N; using
-    //     SmemLayoutAtomB = Layout<32, 8>;  // (tB.N tB.K) using SmemCopyAtomB =
-    //     Copy_Atom<SM75_U32x1_LDSM_N, ElementB>; using TransformB = cute::identity;
+    template <
+        typename ElementA,
+        typename StrideA,
+        typename ElementB,
+        typename StrideB,
+        typename ElementC,
+        typename StrideC,
+        typename ElementD,
+        typename StrideD>
+    void gemm(
+        int M,
+        int N,
+        int K,
+        ElementA *A,
+        StrideA stride_A,
+        ElementB *B,
+        StrideB stride_B,
+        ElementC *C,
+        StrideC stride_C,
+        ElementD *D,
+        StrideD stride_D) {
+        using DispatchPolicy = cutlass::gemm::MainloopSm70TwoStage;
+        using TileShape = Shape<_128, _128, _8>;  // (BLK_M BLK_N BLK_K)
+        using TiledMma = TiledMMA<MMA_Atom<UniversalFMA<ElementD, ElementA, ElementB, ElementC>>>;
+        using GmemTiledCopyA = SM75_U32x1_LDSM_N;
+        using SmemLayoutAtomA = Layout<_32, _8>;  // (tA.M tA.K)
+        using SmemCopyAtomA = Copy_Atom<SM75_U32x1_LDSM_N, ElementA>;
+        using TransformA = cute::identity;
+        using GmemTiledCopyB = SM75_U32x1_LDSM_N;
+        using SmemLayoutAtomB = Layout<_32, _8>;  // (tB.N tB.K)
+        using SmemCopyAtomB = Copy_Atom<SM75_U32x1_LDSM_N, ElementB>;
+        using TransformB = cute::identity;
 
-    //     // Step 1: Generate the required collective layer mainloop specialization
-    //     using CollectiveMainloop = typename cutlass::gemm::collective::CollectiveMma<
-    //         DispatchPolicy,
-    //         TileShape,
-    //         ElementA,
-    //         StrideA,
-    //         ElementB,
-    //         StrideB,
-    //         TiledMma,
-    //         GmemTiledCopyA,
-    //         SmemLayoutAtomA,
-    //         SmemCopyAtomA,
-    //         TransformA,
-    //         GmemTiledCopyB,
-    //         SmemLayoutAtomB,
-    //         SmemCopyAtomB,
-    //         TransformB>;
+        // Step 1: Generate the required collective layer mainloop specialization
+        using CollectiveMainloop = typename cutlass::gemm::collective::CollectiveMma<
+            DispatchPolicy,
+            TileShape,
+            ElementA,
+            StrideA,
+            ElementB,
+            StrideB,
+            TiledMma,
+            GmemTiledCopyA,
+            SmemLayoutAtomA,
+            SmemCopyAtomA,
+            TransformA,
+            GmemTiledCopyB,
+            SmemLayoutAtomB,
+            SmemCopyAtomB,
+            TransformB>;
 
-    //     // Step 2: Specify the collective layer epilogue type
-    //     using CollectiveEpilogue = cutlass::epilogue::collective::DefaultEpilogue<
-    //         StrideC,
-    //         StrideD,
-    //         epilogue::thread::LinearCombination<
-    //             ElementC,
-    //             128 / cutlass::sizeof_bits(ElementD)::value,
-    //             ElementD,
-    //             ElementC>,
-    //         cutlass::gemm::EpilogueDefault>;
+        // Step 2: Specify the collective layer epilogue type
+        using CollectiveEpilogue = cutlass::epilogue::collective::DefaultEpilogue<
+            StrideC,
+            StrideD,
+            cutlass::epilogue::thread::LinearCombination<
+                ElementC,
+                128 / cutlass::sizeof_bits<ElementD>::value,
+                ElementD,
+                ElementC>,
+            cutlass::gemm::EpilogueDefault>;
 
-    //     // Step 3: Compose the mainloop and epilogue together at the kernel layer
-    //     using GemmKernel = cutlass::gemm::kernel::GemmUniversal<
-    //         cute::Shape<int, int, int, int>,  // ProblemShape [M,N,K,L]
-    //         CollectiveMainloop,
-    //         CollectiveEpilogue>;
+        // Step 3: Compose the mainloop and epilogue together at the kernel layer
+        using GemmKernel = cutlass::gemm::kernel::GemmUniversal<
+            cute::Shape<int, int, int>,  // ProblemShape [M,N,K]
+            CollectiveMainloop,
+            CollectiveEpilogue>;
 
-    //     // Step 4: Wrap up the kernel::GemmUniversal kernel class
-    //     // with the device adapter to obtain a host-side handle to the kernel
-    //     using Gemm = cutlass::gemm::device::GemmUniversalAdapter<GemmKernel>;
+        // Step 4: Wrap up the kernel::GemmUniversal kernel class
+        // with the device adapter to obtain a host-side handle to the kernel
+        using Gemm = cutlass::gemm::device::GemmUniversalAdapter<GemmKernel>;
 
-    //     // Step 5: Instantiate the GemmHandle
-    //     Gemm gemm_op;
-    // }
+        // Step 5: Instantiate the GemmHandle
+
+        typename Gemm::Arguments arguments{
+            cutlass::gemm::GemmUniversalMode::kGemm,
+            {M, N, K},
+            {A, stride_A, B, stride_B},
+            {{ElementC(1), ElementC(1)}, C, strie_C, D, stride_D},
+        }
+
+        size_t workspace_size = Gemm::get_workspace_size(arguments);
+        cutlass::DeviceAllocation<uint8_t> workspace(workspace_size);
+
+        Gemm gemm_op;
+
+        CUTLASS_CHECK(gemm_op.can_implement(arguments));
+
+        CUTLASS_CHECK(gemm_op.initialize(arguments, workspace.get()));
+
+        CUTLASS_CHECK(gemm_op.run());
+    }
 }  // namespace lib
