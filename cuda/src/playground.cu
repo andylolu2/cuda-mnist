@@ -43,6 +43,13 @@ int main(int argc, char** argv) {
     lib::op::sum<0>(x, x_sum);
     lib::print_device_tensor(x_sum);
 
+    Tensor test = make_tensor(
+        make_gmem_ptr(data.get()),
+        make_shape(make_shape(_32{}, _32{})),
+        make_stride(make_stride(_32{}, _1{})));
+    std::cout << test.layout() << std::endl;
+    std::cout << upcast<16>(test.layout()) << std::endl;
+
     // std::cout << coalesce(x, layout) << std::endl;
 
     // Tensor y = coalesce(x);

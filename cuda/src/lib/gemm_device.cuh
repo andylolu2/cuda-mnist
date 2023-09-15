@@ -11,6 +11,7 @@
 
 #include <cuda/std/type_traits>
 #include <cute/algorithm/gemm.hpp>
+#include <cute/arch/copy.hpp>
 #include <cute/atom/copy_atom.hpp>
 #include <cute/tensor.hpp>
 #include <cutlass/epilogue/collective/collective_epilogue.hpp>
@@ -221,14 +222,16 @@ namespace lib {
         ElementD *D,
         StrideD stride_D) {
         using DispatchPolicy = cutlass::gemm::MainloopSm70TwoStage;
-        using TileShape = Shape<_128, _128, _8>;  // (BLK_M BLK_N BLK_K)
-        using TiledMma = TiledMMA<MMA_Atom<UniversalFMA<ElementD, ElementA, ElementB, ElementC>>>;
-        using GmemTiledCopyA = SM75_U32x1_LDSM_N;
-        using SmemLayoutAtomA = Layout<_32, _8>;  // (tA.M tA.K)
+        using TileShape = Shape<_128, _128, _32>;  // (BLK_M BLK_N BLK_K)
+        using TiledMma = TiledMMA<MMA_Atom<SM75_16x8x8_F32F16F16F32_TN>>;
+        using GmemTiledCopyA =
+            decltype(make_tiled_copy_A(Copy_Atom<UniversalCopy<ElementA>, ElementA>{}, TiledMma{}));
+        using SmemLayoutAtomA = Layout<Shape<_32, _8>>;  // Fragment size for smem -> rmem copy
         using SmemCopyAtomA = Copy_Atom<SM75_U32x1_LDSM_N, ElementA>;
         using TransformA = cute::identity;
-        using GmemTiledCopyB = SM75_U32x1_LDSM_N;
-        using SmemLayoutAtomB = Layout<_32, _8>;  // (tB.N tB.K)
+        using GmemTiledCopyB =
+            decltype(make_tiled_copy_B(Copy_Atom<UniversalCopy<ElementB>, ElementB>{}, TiledMma{}));
+        using SmemLayoutAtomB = Layout<Shape<_32, _8>>;  // Fragment size for smem -> rmem copy
         using SmemCopyAtomB = Copy_Atom<SM75_U32x1_LDSM_N, ElementB>;
         using TransformB = cute::identity;
 
@@ -256,14 +259,14 @@ namespace lib {
             StrideD,
             cutlass::epilogue::thread::LinearCombination<
                 ElementC,
-                128 / cutlass::sizeof_bits<ElementD>::value,
-                ElementD,
-                ElementC>,
+                128 / cutlass::sizeof_bits<ElementC>::value,
+                float,
+                float>,
             cutlass::gemm::EpilogueDefault>;
 
         // Step 3: Compose the mainloop and epilogue together at the kernel layer
         using GemmKernel = cutlass::gemm::kernel::GemmUniversal<
-            cute::Shape<int, int, int>,  // ProblemShape [M,N,K]
+            cute::Shape<int, int, int, int>,  // ProblemShape [M,N,K,L]
             CollectiveMainloop,
             CollectiveEpilogue>;
 
@@ -271,16 +274,18 @@ namespace lib {
         // with the device adapter to obtain a host-side handle to the kernel
         using Gemm = cutlass::gemm::device::GemmUniversalAdapter<GemmKernel>;
 
+        using Arguments = typename Gemm::Arguments;
+
         // Step 5: Instantiate the GemmHandle
 
-        typename Gemm::Arguments arguments{
+        Arguments arguments{
             cutlass::gemm::GemmUniversalMode::kGemm,
-            {M, N, K},
+            {M, N, K, _1{}},
             {A, stride_A, B, stride_B},
-            {{ElementC(1), ElementC(1)}, C, strie_C, D, stride_D},
-        }
+            {{ElementC(1), ElementC(1)}, C, stride_C, D, stride_D},
+        };
 
-        size_t workspace_size = Gemm::get_workspace_size(arguments);
+        auto workspace_size = Gemm::get_workspace_size(arguments);
         cutlass::DeviceAllocation<uint8_t> workspace(workspace_size);
 
         Gemm gemm_op;
