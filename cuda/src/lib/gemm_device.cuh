@@ -21,6 +21,7 @@
 #include <cutlass/epilogue/collective/default_epilogue.hpp>
 #include <cutlass/gemm/collective/collective_mma.hpp>
 #include <cutlass/gemm/dispatch_policy.hpp>
+#include <optional>
 
 #include "lib/functions.cuh"
 #include "lib/helper.cuh"
@@ -259,9 +260,9 @@ namespace lib {
             >;
         using ThreadblockSwizzle =
             typename cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;
-        // using Stages = DefaultConfig::kStages;
-        // using AlignmentA = AccessGranularityBits / cutlass::sizeof_bits<TA>::value;
-        // using AlignmentB = AccessGranularityBits / cutlass::sizeof_bits<TB>::value;
+        static const int Stages = DefaultConfig::kStages;
+        static const int AlignmentA = AccessGranularityBits / cutlass::sizeof_bits<TA>::value;
+        static const int AlignmentB = AccessGranularityBits / cutlass::sizeof_bits<TB>::value;
 
         using Gemm = cutlass::gemm::device::GemmUniversal<
             TA,
@@ -278,27 +279,22 @@ namespace lib {
             ShapeMMAOp,
             EpilogueOp,
             ThreadblockSwizzle,
-            DefaultConfig::kStages,
-            AccessGranularityBits / cutlass::sizeof_bits<TA>::value,
-            AccessGranularityBits / cutlass::sizeof_bits<TB>::value>;
+            Stages,
+            AlignmentA,
+            AlignmentB>;
         using Arguments = typename Gemm::Arguments;
 
        private:
-        Tensor<EngineA, Layout<ShapeA, StrideA>> &mA;
-        Tensor<EngineB, Layout<ShapeB, StrideB>> &mB;
-        Tensor<EngineC, Layout<ShapeC, StrideC>> &mC;
-        Tensor<EngineD, Layout<ShapeD, StrideD>> &mD;
         DeviceAllocation<uint8_t> workspace;
         Gemm gemm_op;
         Arguments args;
 
        public:
         GemmOperation(
-            Tensor<EngineA, Layout<ShapeA, StrideA>> &mA_,
-            Tensor<EngineB, Layout<ShapeB, StrideB>> &mB_,
-            Tensor<EngineC, Layout<ShapeC, StrideC>> &mC_,
-            Tensor<EngineD, Layout<ShapeD, StrideD>> &mD_)
-            : mA(mA_), mB(mB_), mC(mC_), mD(mD_) {
+            Tensor<EngineA, Layout<ShapeA, StrideA>> &mA,
+            Tensor<EngineB, Layout<ShapeB, StrideB>> &mB,
+            Tensor<EngineC, Layout<ShapeC, StrideC>> &mC,
+            Tensor<EngineD, Layout<ShapeD, StrideD>> &mD) {
             int M = size<0>(mA.shape());
             int N = size<1>(mB.shape());
             int K = size<1>(mA.shape());
@@ -311,12 +307,12 @@ namespace lib {
                 LayoutV2C::packed({get<1>(mC.stride()), get<0>(mC.stride())}).stride(0);
             auto leading_D =
                 LayoutV2D::packed({get<1>(mD.stride()), get<0>(mD.stride())}).stride(0);
+            int split_k_slices = (K + 127) / 128;  // Some random heuristic I invented
 
             args = {
                 cutlass::gemm::GemmUniversalMode::kGemmSplitKParallel,
-                {M, N, K},        // problem size (M N K)
-                (K + 127) / 128,  // batch size if mode=kBatched, k-tiles if mode=kGemm or
-                                  // kGemmSplitKParallel, 1 otherwise.
+                {M, N, K},  // problem size (M N K)
+                split_k_slices,
                 {ElementComputeEpilogue(1),   // alpha
                  ElementComputeEpilogue(1)},  // beta
                 mA.data().get(),              // ptr to A (input)
@@ -342,15 +338,10 @@ namespace lib {
         }
 
         // Move constructor
-        GemmOperation(GemmOperation &&other)
-            : mA(other.mA),
-              mB(other.mB),
-              mC(other.mC),
-              mD(other.mD),
-              workspace(std::move(other.workspace)),
-              args(std::move(other.args)) {
-            CUTLASS_CHECK(gemm_op.initialize(args, workspace.get()));
-        }
+        // GemmOperation(GemmOperation &&other)
+        //     : workspace(std::move(other.workspace)), args(std::move(other.args)) {
+        //     CUTLASS_CHECK(gemm_op.initialize(args, workspace.get()));
+        // }
 
         void operator()() { CUTLASS_CHECK(gemm_op()); }
     };
@@ -424,144 +415,159 @@ namespace lib {
             StrideD>(mA, mB, mD, mD);
     };
 
-    // template <
-    //     int AccessGranularityBits = 128,  // Problem size (in bits) needs to be a multiple
-    //                                       // of this number. 128 gives the best performance.
-    //     ScaleType::Kind Scale = ScaleType::Kind::Default,  /// Control Alpha and Beta scaling
-    //     typename EngineA,
-    //     typename ShapeA,
-    //     typename StrideA,
-    //     typename EngineB,
-    //     typename ShapeB,
-    //     typename StrideB,
-    //     typename EngineC,
-    //     typename ShapeC,
-    //     typename StrideC,
-    //     typename EngineD,
-    //     typename ShapeD,
-    //     typename StrideD>
-    // void gemm(
-    //     Tensor<EngineA, Layout<ShapeA, StrideA>> &mA,
-    //     Tensor<EngineB, Layout<ShapeB, StrideB>> &mB,
-    //     Tensor<EngineC, Layout<ShapeC, StrideC>> &mC,  // Broadcast only works if StrideC = (_1
-    //     _0) Tensor<EngineD, Layout<ShapeD, StrideD>> &mD) { static_assert(rank_v<ShapeA> == 2, "A
-    //     must be a matrix"); static_assert(rank_v<ShapeB> == 2, "B must be a matrix");
-    //     static_assert(rank_v<ShapeC> == 2, "C must be a matrix");
-    //     static_assert(rank_v<ShapeD> == 2, "D must be a matrix");
+    template <
+        int AccessGranularityBits = 16,  // Problem size (in bits) needs to be a multiple
+                                         // of this number. 128 gives the best performance.
+        ScaleType::Kind Scale = ScaleType::Kind::NoBetaScaling,  /// Control Alpha and Beta scaling
+        typename EngineA,
+        typename ShapeA,
+        typename StrideA,
+        typename EngineB,
+        typename ShapeB,
+        typename StrideB,
+        typename EngineC,
+        typename ShapeC,
+        typename StrideC,
+        typename EngineD,
+        typename ShapeD,
+        typename StrideD>
+    auto gemm(
+        Tensor<EngineA, Layout<ShapeA, StrideA>> &mA,
+        Tensor<EngineB, Layout<ShapeB, StrideB>> &mB,
+        Tensor<EngineC, Layout<ShapeC, StrideC>> &mC,
+        Tensor<EngineD, Layout<ShapeD, StrideD>> &mD,
+        std::optional<device_memory::allocation<uint8_t>> workspace_or_null = std::nullopt) {
+        // device_memory::allocation<uint8_t> &workspace) {
+        static_assert(rank_v<ShapeA> == 2, "A must be a matrix");
+        static_assert(rank_v<ShapeB> == 2, "B must be a matrix");
+        static_assert(rank_v<ShapeC> == 2, "C must be a matrix");
+        static_assert(rank_v<ShapeD> == 2, "D must be a matrix");
 
-    //     using TA = typename EngineA::value_type;
-    //     using TB = typename EngineB::value_type;
-    //     using TC = typename EngineC::value_type;
-    //     using TD = typename EngineD::value_type;
-    //     using LayoutV2A = gemm::detail::StrideToLayoutTagA_t<StrideA>;
-    //     using LayoutV2B = gemm::detail::StrideToLayoutTagA_t<StrideB>;
-    //     using LayoutV2C = gemm::detail::StrideToLayoutTagA_t<StrideC>;
-    //     using LayoutV2D = gemm::detail::StrideToLayoutTagA_t<StrideD>;
+        using TA = typename EngineA::value_type;
+        using TB = typename EngineB::value_type;
+        using TC = typename EngineC::value_type;
+        using TD = typename EngineD::value_type;
+        using LayoutV2A = gemm::detail::StrideToLayoutTagA_t<StrideA>;
+        using LayoutV2B = gemm::detail::StrideToLayoutTagA_t<StrideB>;
+        using LayoutV2C = gemm::detail::StrideToLayoutTagA_t<StrideC>;
+        using LayoutV2D = gemm::detail::StrideToLayoutTagA_t<StrideD>;
 
-    //     using ElementAccumulator = half_t;                  // data type of accumulator
-    //     using ElementComputeEpilogue = ElementAccumulator;  // data type of epilogue operations
-    //     using MMAOp = arch::OpClassTensorOp;
-    //     using SmArch = arch::Sm75;
+        static_assert(std::is_same_v<LayoutV2C, LayoutV2D>, "C and D must have the same layout");
 
-    //     using DefaultConfig =
-    //         gemm::device::DefaultGemmConfiguration<MMAOp, SmArch, TA, TB, TC,
-    //         ElementAccumulator>;
+        using ElementAccumulator = half_t;                  // data type of accumulator
+        using ElementComputeEpilogue = ElementAccumulator;  // data type of epilogue operations
+        using MMAOp = arch::OpClassTensorOp;
+        using SmArch = arch::Sm75;
 
-    //     using ShapeMMAThreadBlock =
-    //         typename DefaultConfig::ThreadblockShape;                 // threadblock tile MNK
-    //     using ShapeMMAWarp = typename DefaultConfig::WarpShape;       // warp tile MNK
-    //     using ShapeMMAOp = typename DefaultConfig::InstructionShape;  // MMA tile MNK
-    //     using EpilogueOp = epilogue::thread::LinearCombination<
-    //         TD,  // data type of output matrix
-    //         AccessGranularityBits /
-    //             cutlass::sizeof_bits<TC>::value,  // elements per vectorized memory access
-    //         ElementAccumulator,                   // data type of accumulator
-    //         ElementComputeEpilogue,               // the data type of epilogue operation
-    //         Scale                                 // operation to update the destination
-    //         >;
-    //     using ThreadblockSwizzle =
-    //         typename cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;
-    //     const int Stages = DefaultConfig::kStages;
-    //     const int AlignmentA = AccessGranularityBits / cutlass::sizeof_bits<TA>::value;
-    //     const int AlignmentB = AccessGranularityBits / cutlass::sizeof_bits<TB>::value;
+        using DefaultConfig =
+            gemm::device::DefaultGemmConfiguration<MMAOp, SmArch, TA, TB, TC, ElementAccumulator>;
 
-    //     using Gemm = cutlass::gemm::device::GemmUniversal<
-    //         TA,
-    //         LayoutV2A,
-    //         TB,
-    //         LayoutV2B,
-    //         TC,
-    //         LayoutV2C,
-    //         ElementAccumulator,
-    //         MMAOp,
-    //         SmArch,
-    //         ShapeMMAThreadBlock,
-    //         ShapeMMAWarp,
-    //         ShapeMMAOp,
-    //         EpilogueOp,
-    //         ThreadblockSwizzle,
-    //         Stages,
-    //         AlignmentA,
-    //         AlignmentB>;
+        using ShapeMMAThreadBlock =
+            typename DefaultConfig::ThreadblockShape;                 // threadblock tile MNK
+        using ShapeMMAWarp = typename DefaultConfig::WarpShape;       // warp tile MNK
+        using ShapeMMAOp = typename DefaultConfig::InstructionShape;  // MMA tile MNK
+        using EpilogueOp = epilogue::thread::LinearCombination<
+            TD,  // data type of output matrix
+            AccessGranularityBits /
+                cutlass::sizeof_bits<TC>::value,  // elements per vectorized memory access
+            ElementAccumulator,                   // data type of accumulator
+            ElementComputeEpilogue,               // the data type of epilogue operation
+            Scale                                 // operation to update the destination
+            >;
+        using ThreadblockSwizzle =
+            typename cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;
+        const int Stages = DefaultConfig::kStages;
+        const int AlignmentA = AccessGranularityBits / cutlass::sizeof_bits<TA>::value;
+        const int AlignmentB = AccessGranularityBits / cutlass::sizeof_bits<TB>::value;
 
-    //     int M = size<0>(mA.shape());
-    //     int N = size<1>(mB.shape());
-    //     int K = size<1>(mA.shape());
+        using Gemm = cutlass::gemm::device::GemmUniversal<
+            TA,
+            LayoutV2A,
+            TB,
+            LayoutV2B,
+            TC,
+            LayoutV2C,
+            ElementAccumulator,
+            MMAOp,
+            SmArch,
+            ShapeMMAThreadBlock,
+            ShapeMMAWarp,
+            ShapeMMAOp,
+            EpilogueOp,
+            ThreadblockSwizzle,
+            Stages,
+            AlignmentA,
+            AlignmentB>;
 
-    //     auto leading_A = LayoutV2A::packed({get<1>(mA.stride()), get<0>(mA.stride())}).stride(0);
-    //     auto leading_B = LayoutV2B::packed({get<1>(mB.stride()), get<0>(mB.stride())}).stride(0);
-    //     auto leading_C = LayoutV2C::packed({get<1>(mC.stride()), get<0>(mC.stride())}).stride(0);
-    //     auto leading_D = LayoutV2D::packed({get<1>(mD.stride()), get<0>(mD.stride())}).stride(0);
-    //     int split_k_slices = (K + 127) / 128;  // Some random heuristic I invented
+        int M = size<0>(mA.shape());
+        int N = size<1>(mB.shape());
+        int K = size<1>(mA.shape());
 
-    //     typename Gemm::Arguments args{
-    //         cutlass::gemm::GemmUniversalMode::kGemmSplitKParallel,
-    //         {M, N, K},                    // problem size (M N K)
-    //         split_k_slices,               // batch size if mode=kBatched, k-tiles if mode=kGemm
-    //         or
-    //                                       // kGemmSplitKParallel, 1 otherwise.
-    //         {ElementComputeEpilogue(1),   // alpha
-    //          ElementComputeEpilogue(1)},  // beta
-    //         mA.data().get(),              // ptr to A (input)
-    //         mB.data().get(),              // ptr to B (input)
-    //         mC.data().get(),              // ptr to C (input)
-    //         mD.data().get(),              // ptr to D (output)
-    //         size(mA),                     // numel(A)
-    //         size(mB),                     // numel(B)
-    //         size(mC),                     // numel(C)
-    //         size(mD),                     // numel(D)
-    //         leading_A,                    // leading dimension of A
-    //         leading_B,                    // leading dimension of B
-    //         leading_C,                    // leading dimension of C
-    //         leading_D                     // leading dimension of D
-    //     };
+        auto leading_A = LayoutV2A::packed({get<1>(mA.stride()), get<0>(mA.stride())}).stride(0);
+        auto leading_B = LayoutV2B::packed({get<1>(mB.stride()), get<0>(mB.stride())}).stride(0);
+        auto leading_C = LayoutV2C::packed({get<1>(mC.stride()), get<0>(mC.stride())}).stride(0);
+        auto leading_D = LayoutV2D::packed({get<1>(mD.stride()), get<0>(mD.stride())}).stride(0);
+        int split_k_slices = (K + 127) / 128;  // Some random heuristic I invented
 
-    //     Gemm gemm_op;
-    //     CUTLASS_CHECK(gemm_op.can_implement(args));
+        typename Gemm::Arguments args{
+            cutlass::gemm::GemmUniversalMode::kGemmSplitKParallel,
+            {M, N, K},                    // problem size (M N K)
+            split_k_slices,               // batch size if mode=kBatched, k-tiles if mode=kGemm
+                                          // kGemmSplitKParallel, 1 otherwise.
+            {ElementComputeEpilogue(1),   // alpha
+             ElementComputeEpilogue(1)},  // beta
+            mA.data().get(),              // ptr to A (input)
+            mB.data().get(),              // ptr to B (input)
+            mC.data().get(),              // ptr to C (input)
+            mD.data().get(),              // ptr to D (output)
+            size(mA),                     // numel(A)
+            size(mB),                     // numel(B)
+            size(mC),                     // numel(C)
+            size(mD),                     // numel(D)
+            leading_A,                    // leading dimension of A
+            leading_B,                    // leading dimension of B
+            leading_C,                    // leading dimension of C
+            leading_D                     // leading dimension of D
+        };
 
-    //     size_t workspace_size = Gemm::get_workspace_size(args);
-    //     device_memory::allocation<uint8_t> workspace(workspace_size);
+        Gemm gemm_op;
+        CUTLASS_CHECK(gemm_op.can_implement(args));
 
-    //     CUTLASS_CHECK(gemm_op.initialize(args, workspace.get()));
-    //     CUTLASS_CHECK(gemm_op());
-    // }
+        size_t workspace_size = Gemm::get_workspace_size(args);
+        device_memory::allocation<uint8_t> workspace;
+        if (workspace_or_null.has_value()) {
+            workspace = workspace_or_null.value();
+        } else {
+            workspace.reset(workspace_size);
+        }
+        // workspace_or_null.value_or(device_memory::allocate<uint8_t>(workspace_size));
 
-    // template <
-    //     int AccessGranularityBits = 128,  // Problem size (in bits) needs to be a multiple
-    //                                       // of this number. 128 gives the best performance.
-    //     typename EngineA,
-    //     typename ShapeA,
-    //     typename StrideA,
-    //     typename EngineB,
-    //     typename ShapeB,
-    //     typename StrideB,
-    //     typename EngineD,
-    //     typename ShapeD,
-    //     typename StrideD>
-    // void gemm(
-    //     Tensor<EngineA, Layout<ShapeA, StrideA>> &mA,
-    //     Tensor<EngineB, Layout<ShapeB, StrideB>> &mB,
-    //     Tensor<EngineD, Layout<ShapeD, StrideD>> &mD) {
-    //     gemm<AccessGranularityBits, ScaleType::Kind::OnlyAlphaScaling>(mA, mB, mD, mD);
-    // }
+        if (workspace.bytes() < workspace_size) {
+            workspace.reset(workspace_size);
+        }
+
+        CUTLASS_CHECK(gemm_op.initialize(args, workspace.get()));
+
+        return gemm_op;
+    }
+
+    template <
+        int AccessGranularityBits = 16,
+        typename EngineA,
+        typename ShapeA,
+        typename StrideA,
+        typename EngineB,
+        typename ShapeB,
+        typename StrideB,
+        typename EngineD,
+        typename ShapeD,
+        typename StrideD>
+    auto gemm(
+        Tensor<EngineA, Layout<ShapeA, StrideA>> &mA,
+        Tensor<EngineB, Layout<ShapeB, StrideB>> &mB,
+        Tensor<EngineD, Layout<ShapeD, StrideD>> &mD,
+        std::optional<device_memory::allocation<uint8_t>> workspace_or_null = std::nullopt) {
+        return gemm<AccessGranularityBits, ScaleType::Kind::OnlyAlphaScaling>(
+            mA, mB, mD, mD, workspace_or_null);
+    }
 }  // namespace lib

@@ -18,7 +18,7 @@ namespace lib {
         template <int I, typename Engine, typename Layout>
         auto expand(Tensor<Engine, Layout> const& x, int n) {
             auto new_shape = insert<I>(x.layout().shape(), n);
-            auto new_stride = insert<I>(x.layout().stride(), 0);
+            auto new_stride = insert<I>(x.layout().stride(), _0{});
             auto new_layout = make_layout(new_shape, new_stride);
 
             return make_tensor(x.data(), new_layout);

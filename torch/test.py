@@ -2,7 +2,7 @@ import torch
 import time
 
 if __name__ == "__main__":
-    M, N, K = 3, 5, 9
+    M, N, K = 3, 5, 8
     print_xy = True
 
     x = torch.arange(

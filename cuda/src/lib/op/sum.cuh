@@ -117,7 +117,7 @@ namespace lib {
             reduce<I>(x, y, add);
         }
 
-        struct dAdd {
+        struct Repeat {
             template <typename T>
             CUTE_HOST_DEVICE T operator()(T a) const {
                 return a;
@@ -125,9 +125,17 @@ namespace lib {
         };
 
         template <int I, typename EngineA, typename LayoutA, typename EngineB, typename LayoutB>
+        void repeat(
+            Tensor<EngineA, LayoutA> x,  // output
+            Tensor<EngineB, LayoutB> y   // input
+        ) {
+            Repeat repeat_func;
+            unreduce<I>(x, y, repeat_func);
+        }
+
+        template <int I, typename EngineA, typename LayoutA, typename EngineB, typename LayoutB>
         void sum_bwd(Tensor<EngineA, LayoutA> dx, Tensor<EngineB, LayoutB> dy) {
-            dAdd d_add;
-            unreduce<I>(dx, dy, d_add);
+            repat(dx, dy);
         }
 
         template <typename AccType>

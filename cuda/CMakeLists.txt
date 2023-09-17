@@ -58,3 +58,21 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
 )
+
+add_executable(
+    test_linear
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/test_linear.cu
+)
+set_target_properties(test_linear PROPERTIES CUDA_ARCHITECTURES 75)
+target_compile_options(
+    test_linear PRIVATE
+    -Wall
+    -Wno-unused-function
+    --expt-relaxed-constexpr
+)
+target_include_directories(
+    test_linear PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+)

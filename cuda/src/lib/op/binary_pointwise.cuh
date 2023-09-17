@@ -79,7 +79,8 @@ namespace lib {
             const Tensor<EngineA, LayoutA> &tensor_a,
             const Tensor<EngineB, LayoutB> &tensor_b,
             Tensor<EngineC, LayoutC> &output) {
-            dReLU<ComputeType> func;
+            using TC = typename EngineC::value_type;
+            dReLU<TC> func;
             binary_pointwise(tensor_a, tensor_b, output, func);
         }
     }  // namespace op

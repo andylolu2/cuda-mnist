@@ -21,6 +21,7 @@ int main(int argc, char const* argv[]) {
     int N = atoi(argv[2]);
     int K = atoi(argv[3]);
     int n = atoi(argv[4]);
+    bool print_tensors = (n <= 1 && M <= 16 && N <= 16 && K <= 16);
 
     using T = half_t;
 
@@ -35,26 +36,30 @@ int main(int argc, char const* argv[]) {
 
     lib::init::arange<<<1, 64>>>(a, T(0), T(1.0f / static_cast<float>(M * K)));
     lib::init::arange<<<1, 64>>>(b, T(0), T(1.0f / static_cast<float>(N * K)));
-    // lib::init::arange<<<1, 64>>>(c, T(0), T(1.0f / static_cast<float>(M * N)));
     lib::op::constant(c, T(1));
     lib::op::constant(d);
 
-    lib::print_device_tensor(a);
-    lib::print_device_tensor(b);
-    lib::print_device_tensor(c);
+    if (print_tensors) {
+        lib::print_device_tensor(a);
+        lib::print_device_tensor(b);
+        lib::print_device_tensor(c);
+        lib::print_device_tensor(d);
+    }
 
     std::vector<float> times;
 
-    lib::GemmOperation gemm_op = lib::make_gemm_op<16>(a, b, d);
+    // lib::GemmOperation gemm_op = lib::make_gemm_op<16>(a, b, d);
+    auto gemm_op = lib::gemm<16>(a, b, c, d);
 
     for (int i = 0; i < n; ++i) {
         lib::utils::GpuTimer timer;
 
         timer.start();
-        gemm_op();
-        // lib::gemm<16>(a, b, c, d);
-        lib::print_device_tensor(d);
-        // lib::op::matmul(a, b, c);
+        CUTLASS_CHECK(gemm_op());
+
+        if (print_tensors) {
+            lib::print_device_tensor(d);
+        }
         timer.stop();
 
         times.push_back(timer.elapsed());

@@ -19,16 +19,7 @@ using namespace cutlass;
 
 namespace lib {
     namespace module {
-        template <
-            typename ParamType,
-            typename GradType,
-            int AccessGranularityBits,
-            typename EngineX,
-            typename ShapeX,
-            typename StrideX,
-            typename EngineY,
-            typename ShapeY,
-            typename StrideY>
+        template <typename ParamType, typename GradType>
         class Linear {
             using ShapeW = Shape<int, int>;
             using StrideW = Stride<_1, int>;
@@ -38,69 +29,61 @@ namespace lib {
             using GradEngine = ViewEngine<gmem_ptr<GradType>>;
             using WTensor = Tensor<ParamEngine, Layout<ShapeW, StrideW>>;
             using BTensor = Tensor<ParamEngine, Layout<ShapeB, StrideB>>;
-            using DwTensor = Tensor<GradEngine, Layout<ShapeW, StrideW>>;
-            using DbTensor = Tensor<GradEngine, Layout<ShapeB, StrideB>>;
 
            private:
+            int batch_size;
             int in_features;
             int out_features;
             DeviceAllocation<ParamType> w_data;
             DeviceAllocation<ParamType> b_data;
+            DeviceAllocation<ParamType> b_broadcasted_data;
             DeviceAllocation<GradType> dw_data;
             DeviceAllocation<GradType> db_data;
             WTensor w;
             BTensor b;
-            DwTensor dw;
-            DbTensor db;
-            lib::GemmOperation<
-                AccessGranularityBits,
-                EngineX,
-                ShapeX,
-                StrideX,
-                ParamEngine,
-                ShapeW,
-                StrideW,
-                ParamEngine,
-                ShapeW,
-                StrideW,
-                EngineY,
-                ShapeY,
-                StrideY>
-                gemm_op;
+            WTensor b_broadcasted;
+            WTensor dw;
+            BTensor db;
 
            public:
-            Linear(
-                Tensor<EngineX, Layout<ShapeX, StrideX>>& x,
-                Tensor<EngineY, Layout<ShapeY, StrideY>>& y) {
-                in_features = size<1>(x);
-                out_features = size<1>(y);
-                w_data.reset(in_features * out_features);
-                b_data.reset(out_features);
-                dw_data.reset(in_features * out_features);
-                db_data.reset(out_features);
-                w = make_tensor(make_gmem_ptr(w_data.get()), make_shape(out_features, in_features));
-                b = make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features));
-                dw = make_tensor(
-                    make_gmem_ptr(dw_data.get()), make_shape(out_features, in_features));
-                db = make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features));
-                gemm_op = make_gemm_op(x, w, b, y);
-            }
+            Linear(int batch_size_, int in_features_, int out_features_)
+                : batch_size(batch_size_),
+                  in_features(in_features_),
+                  out_features(out_features_),
+                  w_data(in_features * out_features),
+                  b_data(out_features),
+                  b_broadcasted_data(batch_size * out_features),
+                  dw_data(in_features * out_features),
+                  db_data(out_features),
+                  w(make_tensor(
+                      make_gmem_ptr(w_data.get()), make_shape(in_features, out_features))),
+                  b(make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features))),
+                  b_broadcasted(make_tensor(
+                      make_gmem_ptr(b_broadcasted_data.get()),
+                      make_shape(batch_size, out_features))),
+                  dw(make_tensor(
+                      make_gmem_ptr(dw_data.get()), make_shape(in_features, out_features))),
+                  db(make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features))) {}
 
             // Move constructor
             Linear(Linear&& other)
-                : in_features(other.in_features),
+                : batch_size(other.batch_size),
+                  in_features(other.in_features),
                   out_features(other.out_features),
                   w_data(std::move(other.w_data)),
                   b_data(std::move(other.b_data)),
+                  b_broadcasted_data(std::move(other.b_broadcasted_data)),
                   dw_data(std::move(other.dw_data)),
                   db_data(std::move(other.db_data)),
-                  gemm_op(std::move(other.gemm_op)) {
-                w = make_tensor(make_gmem_ptr(w_data.get()), make_shape(out_features, in_features));
-                b = make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features));
-                dw = make_tensor(
-                    make_gmem_ptr(dw_data.get()), make_shape(out_features, in_features));
-                db = make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features));
-            }
+                  w(make_tensor(
+                      make_gmem_ptr(w_data.get()), make_shape(in_features, out_features))),
+                  b(make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features))),
+                  b_broadcasted(make_tensor(
+                      make_gmem_ptr(b_broadcasted_data.get()),
+                      make_shape(batch_size, out_features))),
+                  dw(make_tensor(
+                      make_gmem_ptr(dw_data.get()), make_shape(in_features, out_features))),
+                  db(make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features))) {}
 
             ~Linear() = default;
 
@@ -131,11 +114,9 @@ namespace lib {
 
             template <typename EngineX, typename LayoutX, typename EngineY, typename LayoutY>
             void forward(Tensor<EngineX, LayoutX>& x, Tensor<EngineY, LayoutY>& y) {
-                if (relu) {
-                    lib::op::relu_matmul_bias(x, w, b, y);
-                } else {
-                    lib::op::matmul_bias(x, w, b, y);
-                }
+                lib::op::repeat<0>(b_broadcasted, b);
+                auto gemm_op = lib::gemm<16>(x, w, b_broadcasted, y);
+                CUTLASS_CHECK(gemm_op());
             }
 
             template <
@@ -146,14 +127,23 @@ namespace lib {
                 typename EngineDx,
                 typename LayoutDx>
             void backward(
-                const Tensor<EngineX, LayoutX>& x,
-                const Tensor<EngineY, LayoutY>& dy,
+                Tensor<EngineX, LayoutX>& x,
+                Tensor<EngineY, LayoutY>& dy,
                 Tensor<EngineDx, LayoutDx>& dx) {
-                if (relu) {
-                    lib::op::relu_matmul_bias_bwd(x, w, b, dy, dx, dw, db);
-                } else {
-                    lib::op::matmul_bias_bwd(x, w, b, dy, dx, dw, db);
-                }
+                // dw = x.T @ dy
+                Tensor x_T = lib::op::transpose<0, 1>(x);
+                auto gemm_op_1 = lib::gemm(x_T, dy, dw);
+                CUTLASS_CHECK(gemm_op_1());
+
+                // db = sum(dy, axis=0)
+                lib::op::sum<0>(dy, db);
+
+                // dx = dy @ w.T
+                Tensor w_T = lib::op::transpose<0, 1>(w);
+                auto gemm_op_2 = lib::gemm(dy, w_T, dx);
+                CUTLASS_CHECK(gemm_op_2());
+
+                // lib::op::relu_matmul_bias_bwd(x, w, b, dy, dx, dw, db);
             }
 
             void update(GradType lr) {
