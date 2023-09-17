@@ -62,9 +62,9 @@ namespace lib {
 
         template <typename ComputeType>
         struct dReLU {
-            template <typename T>
-            __device__ ComputeType operator()(T dx, T dy) {
-                return dy > T(0) ? dx : T(0);
+            template <typename TY, typename TX>
+            __device__ ComputeType operator()(TY dy, TX x) {
+                return x > TX(0) ? ComputeType(dy) : ComputeType(0);
             }
         };
 
@@ -76,12 +76,12 @@ namespace lib {
             typename EngineC,
             typename LayoutC>
         void drelu(
-            const Tensor<EngineA, LayoutA> &tensor_a,
-            const Tensor<EngineB, LayoutB> &tensor_b,
-            Tensor<EngineC, LayoutC> &output) {
+            const Tensor<EngineA, LayoutA> &dy,
+            const Tensor<EngineB, LayoutB> &x,
+            Tensor<EngineC, LayoutC> &dx) {
             using TC = typename EngineC::value_type;
             dReLU<TC> func;
-            binary_pointwise(tensor_a, tensor_b, output, func);
+            binary_pointwise(dy, x, dx, func);
         }
     }  // namespace op
 }  // namespace lib

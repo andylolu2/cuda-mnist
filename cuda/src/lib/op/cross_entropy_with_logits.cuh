@@ -118,7 +118,7 @@ namespace lib {
                 int label = y_true(batch_idx);
                 for (int i = 0; i < size<1>(y_pred); ++i) {
                     float p = cutlass::fast_exp(y_pred(batch_idx, i) - max_v) / sum;
-                    dy_pred(batch_idx, i) = i == label ? TC(p - 1) : TC(p);
+                    dy_pred(batch_idx, i) = TC(i == label ? p - 1.0f : p);
                 }
             }
         }

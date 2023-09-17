@@ -18,7 +18,8 @@ namespace lib {
             typename LayoutB,
             typename TA = typename EngineA::value_type,
             typename TB = typename EngineB::value_type>
-        __global__ void sgd_kernel(Tensor<EngineA, LayoutA> x, Tensor<EngineB, LayoutB> dx, TB lr) {
+        __global__ void sgd_kernel(
+            Tensor<EngineA, LayoutA> x, Tensor<EngineB, LayoutB> dx, float lr) {
             int idx = threadIdx.x + blockIdx.x * blockDim.x;
             int stride = blockDim.x * gridDim.x;
 
@@ -34,7 +35,7 @@ namespace lib {
             typename LayoutB,
             typename TA = typename EngineA::value_type,
             typename TB = typename EngineB::value_type>
-        void sgd(Tensor<EngineA, LayoutA> x, Tensor<EngineB, LayoutB> dx, TB lr) {
+        void sgd(Tensor<EngineA, LayoutA> x, Tensor<EngineB, LayoutB> dx, float lr) {
             assert(size(x) == size(dx));
 
             auto [grid_size, block_size] =

@@ -17,7 +17,7 @@
 
 #define W 28
 #define H 28
-#define B 16
+#define B 2
 #define CLASSES 10
 
 using namespace cute;
@@ -46,36 +46,47 @@ int main(int argc, char const* argv[]) {
     Tensor loss = make_tensor(make_gmem_ptr(loss_data.get()), make_shape(B));
     DeviceAllocation<half_t> loss_scalar_data(1);
     Tensor loss_scalar = make_tensor(make_gmem_ptr(loss_scalar_data.get()), make_shape(1));
-    DeviceAllocation<float> dy_data(B * CLASSES);
+    DeviceAllocation<half_t> dy_data(B * CLASSES);
     Tensor dy = make_tensor(make_gmem_ptr(dy_data.get()), make_shape(B, CLASSES));
-    DeviceAllocation<float> dx_data(B * W * H);
+    DeviceAllocation<half_t> dx_data(B * W * H);
     Tensor dx = make_tensor(make_gmem_ptr(dx_data.get()), make_shape(B, W * H));
 
-    lib::module::MLP<half_t, float, half_t> mlp(W * H, {128, CLASSES}, B);
+    lib::module::MLP mlp(B, W * H, {CLASSES});
     mlp.init();
 
     const auto start_time = std::chrono::system_clock::now();
 
+    loader.next();
+    x_data.copy_from_host(loader.get_image_data());
+    y_true_data.copy_from_host(loader.get_label_data());
+
+    lib::print_device_tensor("y_true", y_true);
+    lib::print_device_tensor("x", lib::op::transpose<0, 1>(x));
+
     // Forward pass
-    for (int step = 0; step < 5000; step++) {
+    for (int step = 0; step < 1; step++) {
         // Load data in host
-        auto [image_host, label_host] = loader.next();
+        // loader.next();
 
         // Copy data to device
-        x_data.copy_from_host(image_host.data());
-        y_true_data.copy_from_host(label_host.data());
+        // x_data.copy_from_host(loader.get_image_data());
+        // y_true_data.copy_from_host(loader.get_label_data());
 
         mlp.forward(x, y);
-
-        // lib::op::cross_entropy_with_logits_fwd(y, y_true, loss);
-        // Tensor loss_expanded = lib::op::expand<1>(loss, 1);  // (B) -> (B, 1)
-        // lib::op::mean<0>(loss_expanded, loss_scalar);        // (B, 1) -> (1)
-        // lib::print_device_tensor("loss", loss_scalar);
-
         lib::op::cross_entropy_with_logits_bwd(y, y_true, dy);
         mlp.backward(x, dy, dx);
 
-        mlp.update(0.003);
+        if (step % 1 == 0) {
+            lib::print_device_tensor("dy", dy);
+            lib::op::cross_entropy_with_logits_fwd(y, y_true, loss);
+            Tensor loss_expanded = lib::op::expand<1>(loss, 1);  // (B) -> (B, 1)
+            lib::op::mean<0>(loss_expanded, loss_scalar);        // (B, 1) -> (1)
+            lib::print_device_tensor("loss", loss_scalar);
+            lib::print_device_tensor("y", y);
+            // lib::print_device_tensor("dw", mlp.get_layer(0).weight_grad());
+        }
+
+        mlp.update(0.001f);
         mlp.clear_grad();
     }
 

@@ -447,14 +447,18 @@ namespace lib {
         using TB = typename EngineB::value_type;
         using TC = typename EngineC::value_type;
         using TD = typename EngineD::value_type;
+        static_assert(std::is_same_v<TA, half_t>, "A dtype must be half");
+        static_assert(std::is_same_v<TB, half_t>, "B dtype must be half");
+        static_assert(std::is_same_v<TC, half_t>, "C dtype must be half");
+        static_assert(std::is_same_v<TD, half_t>, "D dtype must be half");
+
         using LayoutV2A = gemm::detail::StrideToLayoutTagA_t<StrideA>;
         using LayoutV2B = gemm::detail::StrideToLayoutTagA_t<StrideB>;
         using LayoutV2C = gemm::detail::StrideToLayoutTagA_t<StrideC>;
         using LayoutV2D = gemm::detail::StrideToLayoutTagA_t<StrideD>;
-
         static_assert(std::is_same_v<LayoutV2C, LayoutV2D>, "C and D must have the same layout");
 
-        using ElementAccumulator = half_t;                  // data type of accumulator
+        using ElementAccumulator = float;                   // data type of accumulator
         using ElementComputeEpilogue = ElementAccumulator;  // data type of epilogue operations
         using MMAOp = arch::OpClassTensorOp;
         using SmArch = arch::Sm75;
@@ -462,23 +466,24 @@ namespace lib {
         using DefaultConfig =
             gemm::device::DefaultGemmConfiguration<MMAOp, SmArch, TA, TB, TC, ElementAccumulator>;
 
+        const int Stages = DefaultConfig::kStages;
+        const int AlignmentA = AccessGranularityBits / cutlass::sizeof_bits<TA>::value;
+        const int AlignmentB = AccessGranularityBits / cutlass::sizeof_bits<TB>::value;
+        const int EpilogueAccessSize = AccessGranularityBits / cutlass::sizeof_bits<TC>::value;
+
         using ShapeMMAThreadBlock =
             typename DefaultConfig::ThreadblockShape;                 // threadblock tile MNK
         using ShapeMMAWarp = typename DefaultConfig::WarpShape;       // warp tile MNK
         using ShapeMMAOp = typename DefaultConfig::InstructionShape;  // MMA tile MNK
         using EpilogueOp = epilogue::thread::LinearCombination<
-            TD,  // data type of output matrix
-            AccessGranularityBits /
-                cutlass::sizeof_bits<TC>::value,  // elements per vectorized memory access
-            ElementAccumulator,                   // data type of accumulator
-            ElementComputeEpilogue,               // the data type of epilogue operation
-            Scale                                 // operation to update the destination
+            TD,                      // data type of output matrix
+            EpilogueAccessSize,      // elements per vectorized memory access
+            ElementAccumulator,      // data type of accumulator
+            ElementComputeEpilogue,  // the data type of epilogue operation
+            Scale                    // operation to update the destination
             >;
         using ThreadblockSwizzle =
             typename cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;
-        const int Stages = DefaultConfig::kStages;
-        const int AlignmentA = AccessGranularityBits / cutlass::sizeof_bits<TA>::value;
-        const int AlignmentB = AccessGranularityBits / cutlass::sizeof_bits<TB>::value;
 
         using Gemm = cutlass::gemm::device::GemmUniversal<
             TA,

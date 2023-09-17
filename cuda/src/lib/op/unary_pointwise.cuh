@@ -43,17 +43,31 @@ namespace lib {
             unary_pointwise_kernel<<<grid_size, block_size>>>(input, output, func);
         }
 
-        template <typename ComputeType>
+        template <typename ReturnType>
         struct ReLU {
             template <typename T>
-            __device__ ComputeType operator()(T x) {
-                return x > T(0) ? x : T(0);
+            __device__ ReturnType operator()(T x) {
+                return ReturnType(x > T(0) ? x : T(0));
             }
         };
 
         template <typename EngineA, typename LayoutA, typename EngineB, typename LayoutB>
         void relu(Tensor<EngineA, LayoutA> &input, Tensor<EngineB, LayoutB> &output) {
             ReLU<typename EngineB::value_type> func;
+            unary_pointwise(input, output, func);
+        }
+
+        template <typename ReturnType>
+        struct Identity {
+            template <typename T>
+            __device__ ReturnType operator()(T x) {
+                return ReturnType(x);
+            }
+        };
+
+        template <typename EngineA, typename LayoutA, typename EngineB, typename LayoutB>
+        void identity(Tensor<EngineA, LayoutA> &input, Tensor<EngineB, LayoutB> &output) {
+            Identity<typename EngineB::value_type> func;
             unary_pointwise(input, output, func);
         }
 

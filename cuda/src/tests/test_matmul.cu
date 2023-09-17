@@ -49,7 +49,7 @@ int main(int argc, char const* argv[]) {
     std::vector<float> times;
 
     // lib::GemmOperation gemm_op = lib::make_gemm_op<16>(a, b, d);
-    auto gemm_op = lib::gemm<16>(a, b, c, d);
+    auto gemm_op = lib::gemm<sizeof_bits_v<T>>(a, b, c, d);
 
     for (int i = 0; i < n; ++i) {
         lib::utils::GpuTimer timer;

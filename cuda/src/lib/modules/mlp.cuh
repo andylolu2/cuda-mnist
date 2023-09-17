@@ -19,8 +19,10 @@ using namespace cutlass;
 
 namespace lib {
     namespace module {
-        template <typename ParamType, typename GradType, typename ActivationType>
         class MLP {
+            using ActivationType = half_t;
+            using GradType = half_t;
+
             using ActivationShape = Shape<int, int>;
             using ActivationTensor =
                 Tensor<ViewEngine<gmem_ptr<ActivationType>>, Layout<ActivationShape>>;
@@ -28,17 +30,18 @@ namespace lib {
                 Tensor<ViewEngine<gmem_ptr<GradType>>, Layout<ActivationShape>>;
 
            private:
+            int batch_size;
             int in_features;
             std::vector<int> feature_sizes;
-            std::vector<Linear<ParamType, GradType>> layers;
+            std::vector<Linear> layers;
             std::vector<DeviceAllocation<ActivationType>> activations_data;
             std::vector<ActivationTensor> activations;
             std::vector<DeviceAllocation<GradType>> d_activations_data;
             std::vector<DActivationTensor> d_activations;
 
            public:
-            MLP(int in_features, std::vector<int> feature_sizes, int batch_size)
-                : in_features(in_features), feature_sizes(feature_sizes) {
+            MLP(int batch_size, int in_features, std::vector<int> feature_sizes)
+                : batch_size(batch_size), in_features(in_features), feature_sizes(feature_sizes) {
                 // Need to reserve space for the activations_data and d_activations_data in
                 // particular Otherwise the DeviceAllocation will be moved and the pointers to
                 // device will be invalid.
@@ -51,9 +54,7 @@ namespace lib {
                 for (size_t i = 0; i < feature_sizes.size(); i++) {
                     int in = i == 0 ? in_features : feature_sizes[i - 1];
                     int out = feature_sizes[i];
-                    bool use_relu = i != 0;
-
-                    layers.emplace_back(in, out, use_relu);
+                    layers.emplace_back(batch_size, in, out);
 
                     if (i != feature_sizes.size() - 1) {
                         activations_data.emplace_back(batch_size * out);
@@ -70,12 +71,11 @@ namespace lib {
             }
             ~MLP() = default;
 
-            void init() {
+            auto get_layer(int i) -> Linear& { return layers[i]; }
+
+            void init(std::string mode = "kaiming") {
                 for (auto& layer : layers) {
-                    layer.init();
-                }
-                for (auto& activation : activations) {
-                    lib::op::constant(activation, ActivationType(1));
+                    layer.init(mode);
                 }
             }
 
@@ -85,6 +85,9 @@ namespace lib {
                     auto& x_in = i == 0 ? x : activations[i - 1];
                     auto& x_out = i == layers.size() - 1 ? y : activations[i];
                     layer.forward(x_in, x_out);
+                    if (i < layers.size() - 1) {
+                        lib::op::relu(x_out, x_out);
+                    }
                 }
             }
 
@@ -95,10 +98,13 @@ namespace lib {
                     auto dx_in = i == 0 ? dx : d_activations[i - 1];
                     auto dx_out = i == layers.size() - 1 ? dy : d_activations[i];
                     layer.backward(x_in, dx_out, dx_in);
+                    if (i > 0) {
+                        lib::op::drelu(dx_in, x_in, dx_in);
+                    }
                 }
             }
 
-            void update(GradType lr) {
+            void update(float lr) {
                 for (auto& layer : layers) {
                     layer.update(lr);
                 }

@@ -82,6 +82,9 @@ namespace lib {
 
                 return std::make_tuple(image_host, label_host);
             }
+
+            T* get_image_data() { return image_data.data(); }
+            int* get_label_data() { return label_data.data(); }
         };
     }  // namespace mnist
 }  // namespace lib

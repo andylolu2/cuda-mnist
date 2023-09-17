@@ -3,9 +3,9 @@
 #include <cute/tensor.hpp>
 #include <numeric>
 
-#include "lib/fill.h"
 #include "lib/matmul_bias_pointwise.cuh"
 #include "lib/modules/linear.cuh"
+#include "lib/op/arange.cuh"
 #include "lib/print.h"
 #include "lib/utils/gpu_timer.cuh"
 
@@ -36,15 +36,16 @@ int main(int argc, char const* argv[]) {
     Tensor dx = make_tensor(make_gmem_ptr(dx_data.get()), make_shape(B, D1));
     Tensor dy = make_tensor(make_gmem_ptr(dy_data.get()), make_shape(B, D2));
 
-    lib::module::Linear<half_t, half_t> linear(B, D1, D2);
-    linear.init();
+    lib::module::Linear linear(B, D1, D2);
+    linear.init("arange");
 
-    lib::init::arange<<<1, 64>>>(x, T(0), T(1.0f / static_cast<float>(B * D1)));
+    lib::op::arange(x, T(0), T(1.0f / float(size(x))));
+    lib::op::arange(dy, T(0), T(1.0f / float(size(dy))));
 
     if (print_tensors) {
-        lib::print_device_tensor(x);
-        lib::print_device_tensor(linear.weight());
-        lib::print_device_tensor(linear.bias());
+        lib::print_device_tensor("x", x);
+        lib::print_device_tensor("w", linear.weight());
+        lib::print_device_tensor("b", linear.bias());
     }
 
     std::vector<float> times;
@@ -58,8 +59,11 @@ int main(int argc, char const* argv[]) {
         linear.backward(x, dy, dx);
 
         if (print_tensors) {
-            lib::print_device_tensor(y);
-            lib::print_device_tensor(dx);
+            lib::print_device_tensor("y", y);
+            lib::print_device_tensor("dy", dy);
+            lib::print_device_tensor("dw", linear.weight_grad());
+            lib::print_device_tensor("db", linear.bias_grad());
+            lib::print_device_tensor("dx", dx);
         }
         timer.stop();
 
