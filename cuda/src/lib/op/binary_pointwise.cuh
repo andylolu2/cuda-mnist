@@ -59,5 +59,28 @@ namespace lib {
                 size(tensor_a));
             binary_pointwise_kernel<<<grid_size, block_size>>>(tensor_a, tensor_b, output, func);
         }
+
+        template <typename ComputeType>
+        struct dReLU {
+            template <typename T>
+            __device__ ComputeType operator()(T dx, T dy) {
+                return dy > T(0) ? dx : T(0);
+            }
+        };
+
+        template <
+            typename EngineA,
+            typename LayoutA,
+            typename EngineB,
+            typename LayoutB,
+            typename EngineC,
+            typename LayoutC>
+        void drelu(
+            const Tensor<EngineA, LayoutA> &tensor_a,
+            const Tensor<EngineB, LayoutB> &tensor_b,
+            Tensor<EngineC, LayoutC> &output) {
+            dReLU<ComputeType> func;
+            binary_pointwise(tensor_a, tensor_b, output, func);
+        }
     }  // namespace op
 }  // namespace lib

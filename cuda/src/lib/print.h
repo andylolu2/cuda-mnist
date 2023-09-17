@@ -21,6 +21,7 @@ namespace lib {
             copy_to_host(host_ptr, dev_ptr, 1);
         }
 
+        std::cout << "Original stride: " << tensor.stride() << std::endl;
         std::cout << host_tensor << std::endl;
     }
 

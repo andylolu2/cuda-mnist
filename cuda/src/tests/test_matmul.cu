@@ -28,39 +28,32 @@ int main(int argc, char const* argv[]) {
     DeviceAllocation<T> b_data(K * N);
     DeviceAllocation<T> c_data(M * N);
     DeviceAllocation<T> d_data(M * N);
-    Tensor a = make_tensor(make_gmem_ptr(a_data.get()), make_shape(M, K, _1{}));
-    Tensor b = make_tensor(make_gmem_ptr(b_data.get()), make_shape(N, K, _1{}));
-    Tensor c = make_tensor(make_gmem_ptr(c_data.get()), make_shape(M, N, _1{}));
-    Tensor d = make_tensor(make_gmem_ptr(d_data.get()), make_shape(M, N, _1{}));
+    Tensor a = make_tensor(make_gmem_ptr(a_data.get()), make_shape(M, K));
+    Tensor b = make_tensor(make_gmem_ptr(b_data.get()), make_shape(K, N));
+    Tensor c = make_tensor(make_gmem_ptr(c_data.get()), make_shape(M, N));
+    Tensor d = make_tensor(make_gmem_ptr(d_data.get()), make_shape(M, N));
 
     lib::init::arange<<<1, 64>>>(a, T(0), T(1.0f / static_cast<float>(M * K)));
     lib::init::arange<<<1, 64>>>(b, T(0), T(1.0f / static_cast<float>(N * K)));
-    lib::init::arange<<<1, 64>>>(c, T(0), T(1.0f / static_cast<float>(M * N)));
+    // lib::init::arange<<<1, 64>>>(c, T(0), T(1.0f / static_cast<float>(M * N)));
+    lib::op::constant(c, T(1));
+    lib::op::constant(d);
 
-    // lib::print_device_tensor(a);
-    // lib::print_device_tensor(b);
-    // lib::print_device_tensor(c);
+    lib::print_device_tensor(a);
+    lib::print_device_tensor(b);
+    lib::print_device_tensor(c);
 
     std::vector<float> times;
+
+    lib::GemmOperation gemm_op = lib::make_gemm_op<16>(a, b, d);
 
     for (int i = 0; i < n; ++i) {
         lib::utils::GpuTimer timer;
 
         timer.start();
-        lib::gemm(
-            M,
-            N,
-            K,
-            a_data.get(),
-            a.stride(),
-            b_data.get(),
-            b.stride(),
-            c_data.get(),
-            c.stride(),
-            d_data.get(),
-            d.stride());
-
-        // lib::print_device_tensor(d);
+        gemm_op();
+        // lib::gemm<16>(a, b, c, d);
+        lib::print_device_tensor(d);
         // lib::op::matmul(a, b, c);
         timer.stop();
 

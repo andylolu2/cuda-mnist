@@ -5,6 +5,7 @@
 #include <cute/tensor.hpp>
 
 #include "lib/fill.h"
+#include "lib/gemm_device.cuh"
 #include "lib/matmul_bias_bwd.cuh"
 #include "lib/matmul_bias_pointwise.cuh"
 #include "lib/op/add.cuh"
@@ -18,14 +19,27 @@ using namespace cutlass;
 
 namespace lib {
     namespace module {
-        template <typename ParamType, typename GradType>
+        template <
+            typename ParamType,
+            typename GradType,
+            int AccessGranularityBits,
+            typename EngineX,
+            typename ShapeX,
+            typename StrideX,
+            typename EngineY,
+            typename ShapeY,
+            typename StrideY>
         class Linear {
-            using WShape = Shape<int, int>;
-            using BShape = Shape<int>;
-            using WTensor = Tensor<ViewEngine<gmem_ptr<ParamType>>, Layout<WShape>>;
-            using BTensor = Tensor<ViewEngine<gmem_ptr<ParamType>>, Layout<BShape>>;
-            using DwTensor = Tensor<ViewEngine<gmem_ptr<GradType>>, Layout<WShape>>;
-            using DbTensor = Tensor<ViewEngine<gmem_ptr<GradType>>, Layout<BShape>>;
+            using ShapeW = Shape<int, int>;
+            using StrideW = Stride<_1, int>;
+            using ShapeB = Shape<int>;
+            using StrideB = Stride<_1>;
+            using ParamEngine = ViewEngine<gmem_ptr<ParamType>>;
+            using GradEngine = ViewEngine<gmem_ptr<GradType>>;
+            using WTensor = Tensor<ParamEngine, Layout<ShapeW, StrideW>>;
+            using BTensor = Tensor<ParamEngine, Layout<ShapeB, StrideB>>;
+            using DwTensor = Tensor<GradEngine, Layout<ShapeW, StrideW>>;
+            using DbTensor = Tensor<GradEngine, Layout<ShapeB, StrideB>>;
 
            private:
             int in_features;
@@ -38,23 +52,39 @@ namespace lib {
             BTensor b;
             DwTensor dw;
             DbTensor db;
-            bool relu;
+            lib::GemmOperation<
+                AccessGranularityBits,
+                EngineX,
+                ShapeX,
+                StrideX,
+                ParamEngine,
+                ShapeW,
+                StrideW,
+                ParamEngine,
+                ShapeW,
+                StrideW,
+                EngineY,
+                ShapeY,
+                StrideY>
+                gemm_op;
 
            public:
-            Linear(int in_features, int out_features, bool relu = false)
-                : in_features(in_features),
-                  out_features(out_features),
-                  w_data(in_features * out_features),
-                  b_data(out_features),
-                  dw_data(in_features * out_features),
-                  db_data(out_features),
-                  relu(relu),
-                  w(make_tensor(
-                      make_gmem_ptr(w_data.get()), make_shape(out_features, in_features))),
-                  b(make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features))),
-                  dw(make_tensor(
-                      make_gmem_ptr(dw_data.get()), make_shape(out_features, in_features))),
-                  db(make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features))) {}
+            Linear(
+                Tensor<EngineX, Layout<ShapeX, StrideX>>& x,
+                Tensor<EngineY, Layout<ShapeY, StrideY>>& y) {
+                in_features = size<1>(x);
+                out_features = size<1>(y);
+                w_data.reset(in_features * out_features);
+                b_data.reset(out_features);
+                dw_data.reset(in_features * out_features);
+                db_data.reset(out_features);
+                w = make_tensor(make_gmem_ptr(w_data.get()), make_shape(out_features, in_features));
+                b = make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features));
+                dw = make_tensor(
+                    make_gmem_ptr(dw_data.get()), make_shape(out_features, in_features));
+                db = make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features));
+                gemm_op = make_gemm_op(x, w, b, y);
+            }
 
             // Move constructor
             Linear(Linear&& other)
@@ -64,12 +94,13 @@ namespace lib {
                   b_data(std::move(other.b_data)),
                   dw_data(std::move(other.dw_data)),
                   db_data(std::move(other.db_data)),
-                  w(make_tensor(
-                      make_gmem_ptr(w_data.get()), make_shape(out_features, in_features))),
-                  b(make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features))),
-                  dw(make_tensor(
-                      make_gmem_ptr(dw_data.get()), make_shape(out_features, in_features))),
-                  db(make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features))) {}
+                  gemm_op(std::move(other.gemm_op)) {
+                w = make_tensor(make_gmem_ptr(w_data.get()), make_shape(out_features, in_features));
+                b = make_tensor(make_gmem_ptr(b_data.get()), make_shape(out_features));
+                dw = make_tensor(
+                    make_gmem_ptr(dw_data.get()), make_shape(out_features, in_features));
+                db = make_tensor(make_gmem_ptr(db_data.get()), make_shape(out_features));
+            }
 
             ~Linear() = default;
 
