@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # torch.set_printoptions(profile="full")
-log_every = 100
+log_every = 500
 dtype = torch.float16
 
 def infinite_loader(loader: DataLoader):
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     step = 0
 
-    while (step := step + 1) < 5000:
+    while (step := step + 1) < 10000:
         x, y = next(train_loader)
 
         y_pred = model(x)

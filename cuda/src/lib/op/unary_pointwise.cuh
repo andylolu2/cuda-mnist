@@ -24,7 +24,8 @@ namespace lib {
             int idx = threadIdx.x + blockIdx.x * blockDim.x;
             int stride = blockDim.x * gridDim.x;
             for (; idx < size(input); idx += stride) {
-                output(idx) = func(input(idx));
+                auto coord = idx2crd(idx, input.shape());
+                output(coord) = func(input(coord));
             }
         }
 
@@ -36,7 +37,7 @@ namespace lib {
             typename LayoutB>
         void unary_pointwise(
             Tensor<EngineA, LayoutA> &input, Tensor<EngineB, LayoutB> &output, UnaryFunc &func) {
-            assert(size(input) == size(output));
+            assert(input.shape() == output.shape());
 
             auto [grid_size, block_size] = launch_config(
                 unary_pointwise_kernel<UnaryFunc, EngineA, LayoutA, EngineB, LayoutB>, size(input));
@@ -91,7 +92,8 @@ namespace lib {
             curand_init(seed, idx, 0, &state);
 
             for (; idx < size(input); idx += stride) {
-                output(idx) = TB(func(input(idx), state));
+                auto coord = idx2crd(idx, input.shape());
+                output(coord) = TB(func(input(coord), state));
             }
         }
 

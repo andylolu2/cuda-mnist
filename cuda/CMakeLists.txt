@@ -4,6 +4,9 @@ project(HelloWorld)
 enable_language(CUDA CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 add_executable(
     cute_test
@@ -31,7 +34,6 @@ add_executable(
 set_target_properties(playground PROPERTIES CUDA_ARCHITECTURES 75)
 target_compile_options(
     playground PRIVATE
-    -Wall
     -Wno-unused-function
 )
 target_include_directories(
@@ -48,7 +50,6 @@ add_executable(
 set_target_properties(test_matmul PROPERTIES CUDA_ARCHITECTURES 75)
 target_compile_options(
     test_matmul PRIVATE
-    -Wall
     -Wno-unused-function
     --expt-relaxed-constexpr
 )
@@ -66,7 +67,6 @@ add_executable(
 set_target_properties(test_linear PROPERTIES CUDA_ARCHITECTURES 75)
 target_compile_options(
     test_linear PRIVATE
-    -Wall
     -Wno-unused-function
     --expt-relaxed-constexpr
 )
@@ -84,7 +84,6 @@ add_executable(
 set_target_properties(test_mlp PROPERTIES CUDA_ARCHITECTURES 75)
 target_compile_options(
     test_mlp PRIVATE
-    -Wall
     -Wno-unused-function
     --expt-relaxed-constexpr
 )
@@ -102,7 +101,6 @@ add_executable(
 set_target_properties(test_cross_entropy PROPERTIES CUDA_ARCHITECTURES 75)
 target_compile_options(
     test_cross_entropy PRIVATE
-    -Wall
     -Wno-unused-function
     --expt-relaxed-constexpr
 )
