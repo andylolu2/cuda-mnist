@@ -98,13 +98,19 @@ namespace lib {
             Tensor<EngineA, LayoutA> y_pred,
             Tensor<EngineB, LayoutB> y_true,
             Tensor<EngineC, LayoutC> dy_pred) {
+            /**
+             * Backward formula is:
+             * dy_pred = (softmax(y_pred) - y_true) / batch_size
+             * The / batch_size comes from taking the mean of the loss.
+             */
             using TC = typename EngineC::value_type;
 
             // A batch is handled by one thread
             int batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
             int stride = blockDim.x * gridDim.x;
+            int batch_size = size<0>(y_pred);
 
-            for (; batch_idx < size<0>(y_pred); batch_idx += stride) {
+            for (; batch_idx < batch_size; batch_idx += stride) {
                 float max_v = -FLT_MAX;
                 for (int i = 0; i < size<1>(y_pred); ++i) {
                     max_v = cutlass::fast_max(max_v, float(y_pred(batch_idx, i)));
@@ -112,13 +118,14 @@ namespace lib {
 
                 float sum = 0;
                 for (int i = 0; i < size<1>(y_pred); ++i) {
-                    sum += cutlass::fast_exp(y_pred(batch_idx, i) - max_v);
+                    sum += cutlass::fast_exp(float(y_pred(batch_idx, i)) - max_v);
                 }
 
                 int label = y_true(batch_idx);
                 for (int i = 0; i < size<1>(y_pred); ++i) {
-                    float p = cutlass::fast_exp(y_pred(batch_idx, i) - max_v) / sum;
-                    dy_pred(batch_idx, i) = TC(i == label ? p - 1.0f : p);
+                    float p = cutlass::fast_exp(float(y_pred(batch_idx, i)) - max_v) / sum;
+                    float grad = i == label ? p - 1.0f : p;
+                    dy_pred(batch_idx, i) = TC(grad / float(batch_size));
                 }
             }
         }

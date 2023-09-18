@@ -76,3 +76,39 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
 )
+
+add_executable(
+    test_mlp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/test_mlp.cu
+)
+set_target_properties(test_mlp PROPERTIES CUDA_ARCHITECTURES 75)
+target_compile_options(
+    test_mlp PRIVATE
+    -Wall
+    -Wno-unused-function
+    --expt-relaxed-constexpr
+)
+target_include_directories(
+    test_mlp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+)
+
+add_executable(
+    test_cross_entropy
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/test_cross_entropy.cu
+)
+set_target_properties(test_cross_entropy PROPERTIES CUDA_ARCHITECTURES 75)
+target_compile_options(
+    test_cross_entropy PRIVATE
+    -Wall
+    -Wno-unused-function
+    --expt-relaxed-constexpr
+)
+target_include_directories(
+    test_cross_entropy PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+)

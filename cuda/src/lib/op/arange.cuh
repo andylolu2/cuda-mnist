@@ -2,9 +2,9 @@
 
 #include <cuda_runtime.h>
 
-#pragma once
-
 #include <cute/tensor.hpp>
+
+#include "lib/op/launch_config.cuh"
 
 using namespace cute;
 

@@ -1,13 +1,16 @@
+import os
 import time
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.optim import SGD
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torchvision import datasets, transforms
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# torch.set_printoptions(profile="full")
+log_every = 100
+dtype = torch.float16
 
 def infinite_loader(loader: DataLoader):
     while True:
@@ -18,27 +21,33 @@ if __name__ == "__main__":
         transforms.ToTensor(),
     ])
 
-    trainset = datasets.MNIST(".pytorch/MNIST", download=True, train=True, transform=transform)
-    train_loader = DataLoader(trainset, batch_size=16, shuffle=True)
+    mnist = datasets.MNIST(
+        ".pytorch/MNIST", download=True, train=True, transform=transform
+    )
+    trainset = TensorDataset(
+        mnist.data.to(device, dtype) / 255, 
+        mnist.targets.to(device),
+    )
+    train_loader = DataLoader(trainset, batch_size=32, shuffle=True)
     train_loader = infinite_loader(train_loader)
-
 
     model = nn.Sequential(
         nn.Flatten(),
-        nn.Linear(784, 128),
+        nn.Linear(784, 1024),
         nn.ReLU(),
-        nn.Linear(128, 10),
-    ).to(device, dtype=torch.float16)
+        nn.Linear(1024, 1024),
+        nn.ReLU(),
+        nn.Linear(1024, 10),
+    ).to(device, dtype)
 
     optimizer = SGD(model.parameters(), lr=0.003)
 
     start = time.time()
 
     step = 0
+
     while (step := step + 1) < 5000:
         x, y = next(train_loader)
-        x = x.to(device, dtype=torch.float16)
-        y = y.to(device)
 
         y_pred = model(x)
         loss = F.cross_entropy(y_pred, y)
@@ -46,6 +55,9 @@ if __name__ == "__main__":
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+        if step % log_every == 0:
+            print(f"Step: {step}, loss: {loss.item():.4f}")
     
     print(f"Final loss: {loss.item():.4f}")
     print(f"Duration: {time.time() - start:.4f}s")

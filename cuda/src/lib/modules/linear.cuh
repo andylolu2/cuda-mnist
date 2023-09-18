@@ -115,20 +115,11 @@ namespace lib {
 
             void init(std::string mode = "kaiming") {
                 if (mode == "kaiming") {
-                    float fan_in = static_cast<float>(in_features);
-                    {
-                        // Kaiming uniform
-                        float gain = std::sqrt(2.0f);
-                        float std = gain / std::sqrt(fan_in);
-                        float upper = std::sqrt(3.0f) * std;
-                        float lower = -upper;
-                        lib::op::uniform(w_full, w_full, lower, upper);
-                    }
-                    {
-                        float upper = std::sqrt(1.0f / fan_in);
-                        float lower = -upper;
-                        lib::op::uniform(b_full, b_full, lower, upper);
-                    }
+                    // Kaiming uniform
+                    float upper = 1.0f / std::sqrt(in_features);
+                    float lower = -upper;
+                    lib::op::uniform(w_full, w_full, lower, upper);
+                    lib::op::uniform(b_full, b_full, lower, upper);
                 } else if (mode == "arange") {
                     lib::op::arange(w_full, 0.0f, 1.0f / (in_features * out_features));
                     lib::op::arange(b_full, 0.0f, 1.0f / out_features);
@@ -186,8 +177,8 @@ namespace lib {
             }
 
             void update(float lr) {
-                lib::op::lion(w_full, dw, lr);
-                lib::op::lion(b_full, db, lr);
+                lib::op::sgd(w_full, dw, lr);
+                lib::op::sgd(b_full, db, lr);
             }
 
             void clear_grad() {

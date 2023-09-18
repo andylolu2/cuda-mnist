@@ -515,7 +515,7 @@ namespace lib {
         int split_k_slices = (K + 127) / 128;  // Some random heuristic I invented
 
         typename Gemm::Arguments args{
-            cutlass::gemm::GemmUniversalMode::kGemmSplitKParallel,
+            cutlass::gemm::GemmUniversalMode::kGemm,
             {M, N, K},                    // problem size (M N K)
             split_k_slices,               // batch size if mode=kBatched, k-tiles if mode=kGemm
                                           // kGemmSplitKParallel, 1 otherwise.

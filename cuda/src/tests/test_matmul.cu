@@ -4,7 +4,8 @@
 #include <numeric>
 
 #include "lib/fill.h"
-#include "lib/matmul_bias_pointwise.cuh"
+#include "lib/gemm_device.cuh"
+#include "lib/op/constant.cuh"
 #include "lib/print.h"
 #include "lib/utils/gpu_timer.cuh"
 
@@ -21,7 +22,7 @@ int main(int argc, char const* argv[]) {
     int N = atoi(argv[2]);
     int K = atoi(argv[3]);
     int n = atoi(argv[4]);
-    bool print_tensors = (n <= 1 && M <= 16 && N <= 16 && K <= 16);
+    bool print_tensors = (n <= 1 && M <= 16 && N <= 16);
 
     using T = half_t;
 
@@ -39,12 +40,12 @@ int main(int argc, char const* argv[]) {
     lib::op::constant(c, T(1));
     lib::op::constant(d);
 
-    if (print_tensors) {
-        lib::print_device_tensor(a);
-        lib::print_device_tensor(b);
-        lib::print_device_tensor(c);
-        lib::print_device_tensor(d);
-    }
+    // if (print_tensors) {
+    //     lib::print_device_tensor(a);
+    //     lib::print_device_tensor(b);
+    //     lib::print_device_tensor(c);
+    //     lib::print_device_tensor(d);
+    // }
 
     std::vector<float> times;
 

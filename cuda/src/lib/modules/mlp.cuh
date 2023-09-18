@@ -71,7 +71,9 @@ namespace lib {
             }
             ~MLP() = default;
 
-            auto get_layer(int i) -> Linear& { return layers[i]; }
+            size_t n_layers() { return layers.size(); }
+
+            Linear& operator[](int i) { return layers[i]; }
 
             void init(std::string mode = "kaiming") {
                 for (auto& layer : layers) {
@@ -113,6 +115,9 @@ namespace lib {
             void clear_grad() {
                 for (auto& layer : layers) {
                     layer.clear_grad();
+                }
+                for (auto& d_activation : d_activations) {
+                    lib::op::constant(d_activation);
                 }
             }
         };
