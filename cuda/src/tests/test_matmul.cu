@@ -3,11 +3,11 @@
 #include <cute/tensor.hpp>
 #include <numeric>
 
-#include "lib/fill.h"
 #include "lib/gemm_device.cuh"
+#include "lib/op/arange.cuh"
 #include "lib/op/constant.cuh"
-#include "lib/print.h"
 #include "lib/utils/gpu_timer.cuh"
+#include "lib/utils/macros.cuh"
 
 using namespace cute;
 using namespace cutlass;
@@ -35,17 +35,17 @@ int main(int argc, char const* argv[]) {
     Tensor c = make_tensor(make_gmem_ptr(c_data.get()), make_shape(M, N));
     Tensor d = make_tensor(make_gmem_ptr(d_data.get()), make_shape(M, N));
 
-    lib::init::arange<<<1, 64>>>(a, T(0), T(1.0f / static_cast<float>(M * K)));
-    lib::init::arange<<<1, 64>>>(b, T(0), T(1.0f / static_cast<float>(N * K)));
+    lib::op::arange<<<1, 64>>>(a, T(0), T(1.0f / static_cast<float>(M * K)));
+    lib::op::arange<<<1, 64>>>(b, T(0), T(1.0f / static_cast<float>(N * K)));
     lib::op::constant(c, T(1));
     lib::op::constant(d);
 
-    // if (print_tensors) {
-    //     lib::print_device_tensor(a);
-    //     lib::print_device_tensor(b);
-    //     lib::print_device_tensor(c);
-    //     lib::print_device_tensor(d);
-    // }
+    if (print_tensors) {
+        lib::utils::print_device_tensor(a);
+        lib::utils::print_device_tensor(b);
+        lib::utils::print_device_tensor(c);
+        lib::utils::print_device_tensor(d);
+    }
 
     std::vector<float> times;
 
@@ -59,7 +59,7 @@ int main(int argc, char const* argv[]) {
         CUTLASS_CHECK(gemm_op());
 
         if (print_tensors) {
-            lib::print_device_tensor(d);
+            lib::utils::print_device_tensor(d);
         }
         timer.stop();
 

@@ -4,17 +4,15 @@
 
 #include <cute/tensor.hpp>
 
-#include "lib/fill.h"
 #include "lib/gemm_device.cuh"
-#include "lib/matmul_bias_bwd.cuh"
-#include "lib/matmul_bias_pointwise.cuh"
 #include "lib/op/add.cuh"
 #include "lib/op/arange.cuh"
 #include "lib/op/constant.cuh"
 #include "lib/op/lion.cuh"
 #include "lib/op/sgd.cuh"
+#include "lib/op/tensor_ops.cuh"
 #include "lib/op/unary_pointwise.cuh"
-#include "lib/tensor_ops.cuh"
+#include "lib/utils/macros.cuh"
 
 using namespace cute;
 using namespace cutlass;

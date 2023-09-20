@@ -1,12 +1,12 @@
 #include <cutlass/util/device_memory.h>
 
 #include <cute/tensor.hpp>
-#include <cute/util/print.hpp>
+#include <cute/util/print.cuhpp>
 
 #include "lib/op/normal.cuh"
 #include "lib/op/sum.cuh"
-#include "lib/print.h"
-#include "lib/tensor_ops.cuh"
+#include "lib/op/tensor_ops.cuh"
+#include "lib/utils/print.cuh"
 
 using namespace cute;
 using namespace cutlass;
@@ -29,19 +29,19 @@ int main(int argc, char** argv) {
     // std::cout << unflatten(x.layout(), layout.shape()) << std::endl;
 
     // std::cout << x.compose(make_layout(make_shape(_6{}, _4{}))) << std::endl;
-    lib::print_device_tensor(x);
+    lib::utils::print_device_tensor(x);
 
     // std::cout << x.compose(group<0, 3>(x.layout())) << std::endl;
 
-    lib::print_device_tensor(lib::op::transpose<0, 2>(x));
+    lib::utils::print_device_tensor(lib::op::transpose<0, 2>(x));
 
     // auto expanded = lib::op::expand<0>(x, 2);
-    // lib::print_device_tensor(expanded);
+    // lib::utils::print_device_tensor(expanded);
 
-    // lib::print_device_tensor(lib::op::squeeze<0>(expanded));
+    // lib::utils::print_device_tensor(lib::op::squeeze<0>(expanded));
 
     lib::op::sum<0>(x, x_sum);
-    lib::print_device_tensor(x_sum);
+    lib::utils::print_device_tensor(x_sum);
 
     Tensor test = make_tensor(
         make_gmem_ptr(data.get()),

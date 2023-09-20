@@ -6,8 +6,8 @@
 #include "lib/modules/linear.cuh"
 #include "lib/modules/mlp.cuh"
 #include "lib/op/arange.cuh"
-#include "lib/print.h"
 #include "lib/utils/gpu_timer.cuh"
+#include "lib/utils/print.cuh"
 
 using namespace cute;
 using namespace cutlass;
@@ -45,10 +45,10 @@ int main(int argc, char const* argv[]) {
     lib::op::arange(dy, T(0), T(1.0f / float(size(dy))));
 
     if (print_tensors) {
-        lib::print_device_tensor("x", x);
+        lib::utils::print_device_tensor("x", x);
         for (size_t i = 0; i < mlp.n_layers(); ++i) {
-            lib::print_device_tensor(std::to_string(i) + ".w"s, mlp[i].weight());
-            lib::print_device_tensor(std::to_string(i) + ".b"s, mlp[i].bias());
+            lib::utils::print_device_tensor(std::to_string(i) + ".w"s, mlp[i].weight());
+            lib::utils::print_device_tensor(std::to_string(i) + ".b"s, mlp[i].bias());
         }
     }
 
@@ -62,13 +62,13 @@ int main(int argc, char const* argv[]) {
         mlp.backward(x, dy, dx);
 
         if (print_tensors) {
-            lib::print_device_tensor("y", y);
-            lib::print_device_tensor("dy", dy);
+            lib::utils::print_device_tensor("y", y);
+            lib::utils::print_device_tensor("dy", dy);
             for (size_t i = 0; i < mlp.n_layers(); ++i) {
-                lib::print_device_tensor(std::to_string(i) + ".dw"s, mlp[i].weight_grad());
-                lib::print_device_tensor(std::to_string(i) + ".db"s, mlp[i].bias_grad());
+                lib::utils::print_device_tensor(std::to_string(i) + ".dw"s, mlp[i].weight_grad());
+                lib::utils::print_device_tensor(std::to_string(i) + ".db"s, mlp[i].bias_grad());
             }
-            lib::print_device_tensor("dx", dx);
+            lib::utils::print_device_tensor("dx", dx);
         }
         timer.stop();
 

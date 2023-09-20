@@ -6,15 +6,12 @@
 #include <iomanip>
 
 #include "lib/dataset/data_loader.hpp"
-#include "lib/fill.h"
-#include "lib/matmul_bias_bwd.cuh"
-#include "lib/matmul_bias_pointwise.cuh"
 #include "lib/modules/linear.cuh"
 #include "lib/modules/mlp.cuh"
 #include "lib/op/cross_entropy_with_logits.cuh"
-#include "lib/print.h"
-#include "lib/tensor_ops.cuh"
+#include "lib/op/tensor_ops.cuh"
 #include "lib/utils/gpu_timer.cuh"
+#include "lib/utils/print.cuh"
 
 #define W 28
 #define H 28
@@ -70,7 +67,7 @@ int main(int argc, char const* argv[]) {
             Tensor loss_expanded = lib::op::expand<1>(loss, 1);  // (B) -> (B, 1)
             lib::op::mean<0>(loss_expanded, loss_scalar);        // (B, 1) -> (1)
 
-            lib::print_device_tensor("loss", loss_scalar);
+            lib::utils::print_device_tensor("loss", loss_scalar);
         }
 
         mlp.update(0.003f);

@@ -5,8 +5,8 @@
 
 #include "lib/modules/linear.cuh"
 #include "lib/op/arange.cuh"
-#include "lib/print.h"
 #include "lib/utils/gpu_timer.cuh"
+#include "lib/utils/print.cuh"
 
 using namespace cute;
 using namespace cutlass;
@@ -42,9 +42,9 @@ int main(int argc, char const* argv[]) {
     lib::op::arange(dy, T(0), T(1.0f / float(size(dy))));
 
     if (print_tensors) {
-        lib::print_device_tensor("x", x);
-        lib::print_device_tensor("w", linear.weight());
-        lib::print_device_tensor("b", linear.bias());
+        lib::utils::print_device_tensor("x", x);
+        lib::utils::print_device_tensor("w", linear.weight());
+        lib::utils::print_device_tensor("b", linear.bias());
     }
 
     std::vector<float> times;
@@ -58,11 +58,11 @@ int main(int argc, char const* argv[]) {
 
         if (print_tensors) {
             std::cout << "Iteration " << i << std::endl;
-            lib::print_device_tensor("y", y);
-            lib::print_device_tensor("dy", dy);
-            lib::print_device_tensor("dw", linear.weight_grad());
-            lib::print_device_tensor("db", linear.bias_grad());
-            lib::print_device_tensor("dx", dx);
+            lib::utils::print_device_tensor("y", y);
+            lib::utils::print_device_tensor("dy", dy);
+            lib::utils::print_device_tensor("dw", linear.weight_grad());
+            lib::utils::print_device_tensor("db", linear.bias_grad());
+            lib::utils::print_device_tensor("dx", dx);
         }
 
         linear.clear_grad();

@@ -23,8 +23,7 @@
 #include <cutlass/gemm/dispatch_policy.hpp>
 #include <optional>
 
-#include "lib/functions.cuh"
-#include "lib/helper.cuh"
+#include "lib/utils/macros.cuh"
 
 using namespace cute;
 using namespace cutlass;

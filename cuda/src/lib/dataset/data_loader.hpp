@@ -7,7 +7,7 @@
 
 #include "lib/dataset/mnist_reader.hpp"
 #include "lib/op/unary_pointwise.cuh"
-#include "lib/tensor_ops.cuh"
+#include "lib/op/tensor_ops.cuh"
 
 using namespace cute;
 

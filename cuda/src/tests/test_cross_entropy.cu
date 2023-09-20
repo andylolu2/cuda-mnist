@@ -6,8 +6,8 @@
 #include "lib/op/arange.cuh"
 #include "lib/op/cross_entropy_with_logits.cuh"
 #include "lib/op/sum.cuh"
-#include "lib/print.h"
-#include "lib/tensor_ops.cuh"
+#include "lib/op/tensor_ops.cuh"
+#include "lib/utils/print.cuh"
 
 using namespace cute;
 using namespace cutlass;
@@ -39,16 +39,16 @@ int main(int argc, char const* argv[]) {
 
     for (int i = 0; i < 2; i++) {
         std::cout << "Iteration " << i << std::endl;
-        lib::print_device_tensor("y", y);
-        lib::print_device_tensor("y_true", y_true);
+        lib::utils::print_device_tensor("y", y);
+        lib::utils::print_device_tensor("y_true", y_true);
 
         lib::op::cross_entropy_with_logits_bwd(y, y_true, dy);
-        lib::print_device_tensor("dy", dy);
+        lib::utils::print_device_tensor("dy", dy);
 
         lib::op::cross_entropy_with_logits_fwd(y, y_true, loss);
         Tensor loss_expanded = lib::op::expand<1>(loss, 1);  // (B) -> (B, 1)
         lib::op::mean<0>(loss_expanded, loss_scalar);        // (B, 1) -> (1)
-        lib::print_device_tensor("loss", loss_scalar);
+        lib::utils::print_device_tensor("loss", loss_scalar);
     }
     return 0;
 }
