@@ -4,7 +4,7 @@
 #include <numeric>
 
 #include "lib/modules/linear.cuh"
-#include "lib/op/arange.cuh"
+#include "lib/op/pointwise_ops.cuh"
 #include "lib/utils/gpu_timer.cuh"
 #include "lib/utils/print.cuh"
 
@@ -47,12 +47,10 @@ int main(int argc, char const* argv[]) {
         lib::utils::print_device_tensor("b", linear.bias());
     }
 
-    std::vector<float> times;
+    lib::utils::GpuTimer timer;
+    timer.start();
 
     for (int i = 0; i < n; ++i) {
-        lib::utils::GpuTimer timer;
-
-        timer.start();
         linear.forward(x, y);
         linear.backward(x, dy, dx);
 
@@ -66,13 +64,11 @@ int main(int argc, char const* argv[]) {
         }
 
         linear.clear_grad();
-
-        timer.stop();
-        times.push_back(timer.elapsed());
     }
+    timer.stop();
 
-    float mean_s = std::accumulate(times.begin(), times.end(), 0.0f) / times.size() / 1000.0f;
-    float tflops = 2.0f * B * D1 * D2 * 1e-12f / mean_s;
+    float mean_s = timer.elapsed() / n / 1000.0f;
+    float tflops = linear.tflops() / mean_s;
 
     std::cout << "Time: " << mean_s << " s" << std::endl;
     std::cout << "TFLOPS: " << tflops << std::endl;

@@ -6,7 +6,7 @@
 #include <numeric>
 
 #include "lib/dataset/mnist_reader.hpp"
-#include "lib/op/unary_pointwise.cuh"
+#include "lib/op/pointwise_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
 
 using namespace cute;
@@ -120,11 +120,11 @@ namespace lib {
                 for (int i = 0; i < batch_size; i++) {
                     Tensor image_slice = images(indices[current_idx + i], _, _);
                     Tensor batch_image_slice = batch_images(i, _, _);
-                    lib::op::identity(image_slice, batch_image_slice);
+                    lib::op::convert(batch_image_slice, image_slice);
 
                     Tensor label_slice = labels(indices[current_idx + i], _);
                     Tensor batch_label_slice = batch_labels(i, _);
-                    lib::op::identity(label_slice, batch_label_slice);
+                    lib::op::convert(batch_label_slice, label_slice);
                 }
                 current_idx += batch_size;
             }

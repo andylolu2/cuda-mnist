@@ -5,11 +5,8 @@
 #include <cute/tensor.hpp>
 
 #include "lib/modules/linear.cuh"
-#include "lib/op/add.cuh"
-#include "lib/op/constant.cuh"
-#include "lib/op/sgd.cuh"
+#include "lib/op/pointwise_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
-#include "lib/op/unary_pointwise.cuh"
 
 using namespace cute;
 using namespace cutlass;
@@ -98,7 +95,7 @@ namespace lib {
                     auto dx_out = i == layers.size() - 1 ? dy : d_activations[i];
                     layer.backward(x_in, dx_out, dx_in);
                     if (i > 0) {
-                        lib::op::drelu(dx_in, x_in, dx_in);
+                        lib::op::drelu(dx_in, dx_in, x_in);
                     }
                 }
             }
@@ -116,6 +113,22 @@ namespace lib {
                 for (auto& d_activation : d_activations) {
                     lib::op::constant(d_activation);
                 }
+            }
+
+            /**
+             * Compute the number of TFLOPs for each training step
+             */
+            auto tflops() {
+                float tflops = 0;
+
+                for (size_t i = 0; i < layers.size(); i++) {
+                    auto& layer = layers[i];
+                    tflops += layer.tflops();
+                    if (i < layers.size() - 1) {
+                        tflops += 2 * feature_sizes[i] * batch_size / 1e12;  // relu and drelu
+                    }
+                }
+                return tflops;
             }
         };
     }  // namespace module

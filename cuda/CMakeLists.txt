@@ -43,70 +43,22 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
 )
 
-add_executable(
-    test_matmul
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/test_matmul.cu
-)
-set_target_properties(test_matmul PROPERTIES CUDA_ARCHITECTURES 75)
-target_compile_options(
-    test_matmul PRIVATE
-    -Wno-unused-function
-    --expt-relaxed-constexpr
-)
-target_include_directories(
-    test_matmul PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
-)
+FILE(GLOB tests ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/*.cu)
 
-add_executable(
-    test_linear
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/test_linear.cu
-)
-set_target_properties(test_linear PROPERTIES CUDA_ARCHITECTURES 75)
-target_compile_options(
-    test_linear PRIVATE
-    -Wno-unused-function
-    --expt-relaxed-constexpr
-)
-target_include_directories(
-    test_linear PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
-)
-
-add_executable(
-    test_mlp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/test_mlp.cu
-)
-set_target_properties(test_mlp PROPERTIES CUDA_ARCHITECTURES 75)
-target_compile_options(
-    test_mlp PRIVATE
-    -Wno-unused-function
-    --expt-relaxed-constexpr
-)
-target_include_directories(
-    test_mlp PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
-)
-
-add_executable(
-    test_cross_entropy
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/test_cross_entropy.cu
-)
-set_target_properties(test_cross_entropy PROPERTIES CUDA_ARCHITECTURES 75)
-target_compile_options(
-    test_cross_entropy PRIVATE
-    -Wno-unused-function
-    --expt-relaxed-constexpr
-)
-target_include_directories(
-    test_cross_entropy PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
-)
+FOREACH(test ${tests})
+    GET_FILENAME_COMPONENT(filename ${test} NAME_WE)
+    add_executable(${filename} ${test})
+    set_target_properties(${filename} PROPERTIES CUDA_ARCHITECTURES 75)
+    target_compile_options(
+        ${filename} PRIVATE
+        -Wno-unused-function
+        --expt-relaxed-constexpr
+    )
+    target_include_directories(
+        ${filename} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+    )
+    add_test(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename})
+ENDFOREACH()

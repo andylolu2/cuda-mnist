@@ -37,20 +37,22 @@ if __name__ == "__main__":
 
     model = nn.Sequential(
         nn.Flatten(),
-        nn.Linear(784, 1024),
+        nn.Linear(784, 128),
         nn.ReLU(),
-        nn.Linear(1024, 1024),
+        nn.Linear(128, 128),
         nn.ReLU(),
-        nn.Linear(1024, 10),
+        nn.Linear(128, 128),
+        nn.ReLU(),
+        nn.Linear(128, 10),
     ).to(device, dtype)
 
     optimizer = SGD(model.parameters(), lr=0.003)
 
     start = time.time()
 
-    step = 0
+    step = -1
     loss = 0
-    while (step := step + 1) < 10000:
+    while (step := step + 1) <= 10000:
         x, y = next(train_loader)
 
         y_pred = model(x)
@@ -66,5 +68,4 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.synchronize()
 
-    print(f"Final loss: {loss.item():.4f}")
     print(f"Duration: {time.time() - start:.4f}s")

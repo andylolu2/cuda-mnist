@@ -5,7 +5,6 @@
             "includePath": [
                 "/usr/local/cuda/include/",
                 "${workspaceFolder}/cuda/src",
-                "${workspaceFolder}/cuda/cudnn-frontend/include",
                 "${workspaceFolder}/cuda/cutlass/tools/util/include",
                 "${workspaceFolder}/cuda/cutlass/include"
             ],

@@ -3,9 +3,9 @@
 #include <cute/tensor.hpp>
 #include <numeric>
 
-#include "lib/op/arange.cuh"
 #include "lib/op/cross_entropy_with_logits.cuh"
-#include "lib/op/sum.cuh"
+#include "lib/op/pointwise_ops.cuh"
+#include "lib/op/reduce_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
 #include "lib/utils/print.cuh"
 

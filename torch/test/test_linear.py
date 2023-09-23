@@ -2,7 +2,7 @@ from torch import nn
 import torch
 from test_utils import cuda_2d_arange
 
-B, D1, D2 = 3, 4, 5
+B, D1, D2 = 8, 8, 3
 
 linear = nn.Linear(D1, D2)
 linear.weight.data = cuda_2d_arange(D1, D2).T

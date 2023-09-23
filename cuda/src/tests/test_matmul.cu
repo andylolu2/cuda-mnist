@@ -3,11 +3,11 @@
 #include <cute/tensor.hpp>
 #include <numeric>
 
-#include "lib/gemm_device.cuh"
-#include "lib/op/arange.cuh"
-#include "lib/op/constant.cuh"
+#include "lib/op/gemm.cuh"
+#include "lib/op/pointwise_ops.cuh"
 #include "lib/utils/gpu_timer.cuh"
 #include "lib/utils/macros.cuh"
+#include "lib/utils/print.cuh"
 
 using namespace cute;
 using namespace cutlass;
@@ -35,9 +35,9 @@ int main(int argc, char const* argv[]) {
     Tensor c = make_tensor(make_gmem_ptr(c_data.get()), make_shape(M, N));
     Tensor d = make_tensor(make_gmem_ptr(d_data.get()), make_shape(M, N));
 
-    lib::op::arange<<<1, 64>>>(a, T(0), T(1.0f / static_cast<float>(M * K)));
-    lib::op::arange<<<1, 64>>>(b, T(0), T(1.0f / static_cast<float>(N * K)));
-    lib::op::constant(c, T(1));
+    lib::op::arange(a, static_cast<T>(0), T(1.0f / static_cast<float>(M * K)));
+    lib::op::arange(b, static_cast<T>(0), T(1.0f / static_cast<float>(N * K)));
+    lib::op::constant(c, static_cast<T>(1));
     lib::op::constant(d);
 
     if (print_tensors) {
@@ -49,8 +49,8 @@ int main(int argc, char const* argv[]) {
 
     std::vector<float> times;
 
-    // lib::GemmOperation gemm_op = lib::make_gemm_op<16>(a, b, d);
-    auto gemm_op = lib::gemm<sizeof_bits_v<T>>(a, b, c, d);
+    DeviceAllocation<uint8_t> workspace;
+    auto gemm_op = lib::op::gemm<128>(a, b, c, d, workspace);
 
     for (int i = 0; i < n; ++i) {
         lib::utils::GpuTimer timer;
@@ -67,7 +67,7 @@ int main(int argc, char const* argv[]) {
     }
 
     float mean_s = std::accumulate(times.begin(), times.end(), 0.0f) / times.size() / 1000.0f;
-    float tflops = 2.0f * M * N * K * 1e-12f / mean_s;
+    float tflops = 2.0f * M * N * K / 1e12f / mean_s;
 
     std::cout << "Time: " << mean_s << " s" << std::endl;
     std::cout << "TFLOPS: " << tflops << std::endl;

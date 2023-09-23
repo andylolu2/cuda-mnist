@@ -1,10 +1,8 @@
 #include <cutlass/util/device_memory.h>
 
 #include <cute/tensor.hpp>
-#include <cute/util/print.cuhpp>
 
-#include "lib/op/normal.cuh"
-#include "lib/op/sum.cuh"
+#include "lib/op/pointwise_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
 #include "lib/utils/print.cuh"
 

@@ -13,8 +13,8 @@ namespace lib {
         void print_device_tensor(Tensor<Engine, Layout> const &tensor) {
             using T = typename Engine::value_type;
 
-            std::vector<T> host_mem(size(tensor));
-            Tensor host_tensor = make_tensor(host_mem.data(), tensor.shape());
+            std::vector<T> host_mem(cosize(tensor.layout()));
+            Tensor host_tensor = make_tensor(host_mem.data(), tensor.layout());
 
             // Copy the data from device to host, one element at a time since the data might not be
             // contiguous.
@@ -23,9 +23,6 @@ namespace lib {
                 T *host_ptr = host_tensor.engine().begin() + host_tensor.layout()(i);
                 copy_to_host(host_ptr, dev_ptr, 1);
             }
-
-            std::cout << "Shape: " << tensor.shape() << " "
-                      << "Stride: " << tensor.stride() << " ";
             std::cout << host_tensor << std::endl;
         }
 

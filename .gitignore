@@ -5,3 +5,5 @@ cuda/build/
 data/
 
 torch/.pytorch
+
+__pycache__

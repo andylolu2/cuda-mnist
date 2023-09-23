@@ -9,14 +9,10 @@
 #include "lib/modules/linear.cuh"
 #include "lib/modules/mlp.cuh"
 #include "lib/op/cross_entropy_with_logits.cuh"
+#include "lib/op/reduce_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
 #include "lib/utils/gpu_timer.cuh"
 #include "lib/utils/print.cuh"
-
-#define W 28
-#define H 28
-#define B 16
-#define CLASSES 10
 
 using namespace cute;
 using namespace cutlass;
@@ -28,6 +24,12 @@ int main(int argc, char const* argv[]) {
     }
     std::string mnist_path = argv[1];
     int steps = std::stoi(argv[2]);
+    int W = 28;
+    int H = 28;
+    int B = 32;
+    int CLASSES = 10;
+    std::vector<int> layer_sizes = {128, 128, 128, CLASSES};
+    float learning_rate = 0.003f;
 
     // Load MNIST dataset
     auto loader = lib::mnist::DataLoader<half_t>(mnist_path, lib::mnist::Split::TRAIN, B);
@@ -38,13 +40,13 @@ int main(int argc, char const* argv[]) {
     DeviceAllocation<half_t> loss_data(B);
     Tensor loss = make_tensor(make_gmem_ptr(loss_data.get()), make_shape(B));
     DeviceAllocation<half_t> loss_scalar_data(1);
-    Tensor loss_scalar = make_tensor(make_gmem_ptr(loss_scalar_data.get()), make_shape(1));
+    Tensor loss_scalar = make_tensor(make_gmem_ptr(loss_scalar_data.get()), make_shape(_1{}));
     DeviceAllocation<half_t> dy_data(B * CLASSES);
     Tensor dy = make_tensor(make_gmem_ptr(dy_data.get()), make_shape(B, CLASSES));
     DeviceAllocation<half_t> dx_data(B * W * H);
     Tensor dx = make_tensor(make_gmem_ptr(dx_data.get()), make_shape(B, W * H));
 
-    lib::module::MLP mlp(B, W * H, {128, CLASSES});
+    lib::module::MLP mlp(B, W * H, layer_sizes);
     mlp.init();
 
     lib::utils::GpuTimer timer;
@@ -53,8 +55,7 @@ int main(int argc, char const* argv[]) {
     Tensor x = loader.get_batch_array();
     Tensor y_true = loader.get_batch_labels();
 
-    // Forward pass
-    for (int step = 0; step < steps; step++) {
+    for (int step = 1; step <= steps; ++step) {
         loader.next();  // Update x and y_true
 
         mlp.forward(x, y);
@@ -70,7 +71,7 @@ int main(int argc, char const* argv[]) {
             lib::utils::print_device_tensor("loss", loss_scalar);
         }
 
-        mlp.update(0.003f);
+        mlp.update(learning_rate);
         mlp.clear_grad();
     }
 

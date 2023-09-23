@@ -3,7 +3,7 @@ from torch import nn
 
 from test_utils import cuda_2d_arange
 
-B, D1, D2, D3 = 3, 4, 5, 6
+B, D1, D2, D3 = 8, 8, 8, 2
 
 mlp = nn.Sequential(
     nn.Linear(D1, D2),

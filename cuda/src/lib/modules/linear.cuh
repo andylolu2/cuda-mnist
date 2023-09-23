@@ -4,14 +4,11 @@
 
 #include <cute/tensor.hpp>
 
-#include "lib/gemm_device.cuh"
-#include "lib/op/add.cuh"
-#include "lib/op/arange.cuh"
-#include "lib/op/constant.cuh"
-#include "lib/op/lion.cuh"
-#include "lib/op/sgd.cuh"
+#include "lib/op/gemm.cuh"
+#include "lib/op/pointwise_ops.cuh"
+#include "lib/op/reduce_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
-#include "lib/op/unary_pointwise.cuh"
+#include "lib/op/unreduce_ops.cuh"
 #include "lib/utils/macros.cuh"
 
 using namespace cute;
@@ -25,20 +22,18 @@ namespace lib {
             using GradType = half_t;
 
             using ShapeW = Shape<int, int>;
-            using StrideW = Stride<_1, int>;
             using ShapeB = Shape<int>;
-            using StrideB = Stride<_1>;
             using ParamEngine = ViewEngine<gmem_ptr<ParamType>>;
             using BaseParamEngine = ViewEngine<gmem_ptr<BaseParamType>>;
             using GradEngine = ViewEngine<gmem_ptr<GradType>>;
-            using WTensor = Tensor<ParamEngine, Layout<ShapeW, StrideW>>;
-            using BaseWTensor = Tensor<BaseParamEngine, Layout<ShapeW, StrideW>>;
-            // using BTensor = Tensor<ParamEngine, Layout<ShapeB, StrideB>>;
-            using BaseBTensor = Tensor<BaseParamEngine, Layout<ShapeB, StrideB>>;
-            using DWTensor = Tensor<GradEngine, Layout<ShapeW, StrideW>>;
-            using DBTensor = Tensor<GradEngine, Layout<ShapeB, StrideB>>;
+            using WTensor = Tensor<ParamEngine, Layout<ShapeW>>;
+            using BaseWTensor = Tensor<BaseParamEngine, Layout<ShapeW>>;
+            using BaseBTensor = Tensor<BaseParamEngine, Layout<ShapeB>>;
+            using DWTensor = Tensor<GradEngine, Layout<ShapeW>>;
+            using DBTensor = Tensor<GradEngine, Layout<ShapeB>>;
 
            private:
+            static const int AccessGranularityBits = 128;
             int batch_size;
             int in_features;
             int out_features;
@@ -48,6 +43,7 @@ namespace lib {
             DeviceAllocation<ParamType> b_data_broadcasted_half;
             DeviceAllocation<GradType> dw_data;
             DeviceAllocation<GradType> db_data;
+            DeviceAllocation<uint8_t> workspace;
             WTensor w_half;
             BaseWTensor w_full;
             BaseBTensor b_full;
@@ -116,8 +112,8 @@ namespace lib {
                     // Kaiming uniform
                     float upper = 1.0f / std::sqrt(in_features);
                     float lower = -upper;
-                    lib::op::uniform(w_full, w_full, lower, upper);
-                    lib::op::uniform(b_full, b_full, lower, upper);
+                    lib::op::uniform(w_full, lower, upper);
+                    lib::op::uniform(b_full, lower, upper);
                 } else if (mode == "arange") {
                     lib::op::arange(w_full, 0.0f, 1.0f / (in_features * out_features));
                     lib::op::arange(b_full, 0.0f, 1.0f / out_features);
@@ -128,55 +124,40 @@ namespace lib {
 
             template <typename EngineX, typename LayoutX, typename EngineY, typename LayoutY>
             void forward(Tensor<EngineX, LayoutX>& x, Tensor<EngineY, LayoutY>& y) {
-                // const int access_size = std::max({
-                //     sizeof_bits_v<typename EngineX::value_type>,
-                //     sizeof_bits_v<typename EngineY::value_type>,
-                //     sizeof_bits_v<ParamType>,
-                // });
-                lib::op::identity(w_full, w_half);
+                // Make fp16 copy of w and b (and broadcast b)
+                lib::op::convert(w_half, w_full);
                 lib::op::repeat<0>(b_broadcasted_half, b_full);
-                auto gemm_op = lib::gemm<16>(x, w_half, b_broadcasted_half, y);
+
+                // y = x @ w + b
+                auto gemm_op = lib::op::gemm<128>(x, w_half, b_broadcasted_half, y, workspace);
                 CUTLASS_CHECK(gemm_op());
             }
 
-            template <
-                typename EngineX,
-                typename LayoutX,
-                typename EngineY,
-                typename LayoutY,
-                typename EngineDx,
-                typename LayoutDx>
-            void backward(
-                Tensor<EngineX, LayoutX>& x,
-                Tensor<EngineY, LayoutY>& dy,
-                Tensor<EngineDx, LayoutDx>& dx) {
-                {  // dw = x.T @ dy
-                    // const int access_size = std::max(
-                    //     {sizeof_bits_v<typename EngineX::value_type>,
-                    //      sizeof_bits_v<typename EngineY::value_type>,
-                    //      sizeof_bits_v<GradType>});
-                    Tensor x_T = lib::op::transpose<0, 1>(x);
-                    auto gemm_op_1 = lib::gemm<16>(x_T, dy, dw);
-                    CUTLASS_CHECK(gemm_op_1());
-                }
+            template <typename TensorX, typename TensorDy, typename TensorDx>
+            void backward(TensorX& x, TensorDy& dy, TensorDx& dx) {
+                // Compute dw and db
+                backward(x, dy);
+
+                // dx = dy @ w.T
+                Tensor w_T = lib::op::transpose<0, 1>(w_half);
+                auto gemm_op = lib::op::gemm<AccessGranularityBits>(dy, w_T, dx, workspace);
+                CUTLASS_CHECK(gemm_op());
+            }
+
+            template <typename TensorX, typename TensorDy>
+            void backward(TensorX& x, TensorDy& dy) {
+                // dw = x.T @ dy
+                Tensor x_T = lib::op::transpose<0, 1>(x);
+                auto gemm_op = lib::op::gemm<AccessGranularityBits>(x_T, dy, dw, workspace);
+                CUTLASS_CHECK(gemm_op());
 
                 // db = sum(dy, axis=0)
                 lib::op::sum<0>(dy, db);
-
-                {  // dx = dy @ w.T
-                    // const int access_size = std::max(
-                    //     {sizeof_bits_v<typename EngineY::value_type>,
-                    //      sizeof_bits_v<ParamType>,
-                    //      sizeof_bits_v<GradType>});
-                    Tensor w_T = lib::op::transpose<0, 1>(w_half);
-                    auto gemm_op_2 = lib::gemm<16>(dy, w_T, dx);
-                    CUTLASS_CHECK(gemm_op_2());
-                }
             }
 
             void update(float lr) {
-                lib::op::sgd(w_full, dw, lr);
-                lib::op::sgd(b_full, db, lr);
+                lib::op::sgd(w_full, w_full, dw, lr);
+                lib::op::sgd(b_full, b_full, db, lr);
             }
 
             void clear_grad() {
@@ -184,12 +165,18 @@ namespace lib {
                 lib::op::constant(db);
             }
 
-            friend std::ostream& operator<<(std::ostream& os, const Linear& linear);
-        };  // namespace module
-
-        std::ostream& operator<<(std::ostream& os, const Linear& linear) {
-            os << "Linear(" << linear.in_features << ", " << linear.out_features << ")";
-            return os;
-        }
+            /**
+             * Compute the number of TFLOPs for each training step
+             */
+            auto tflops() {
+                size_t b = batch_size;
+                size_t m = in_features;
+                size_t n = out_features;
+                size_t fwd_flops = 2 * b * m * n;
+                size_t bwd_flops = 2 * fwd_flops + b * n;
+                size_t update_flops = (n + 1) * m;
+                return (fwd_flops + bwd_flops + update_flops) / 1e12;
+            }
+        };
     }  // namespace module
 }  // namespace lib
