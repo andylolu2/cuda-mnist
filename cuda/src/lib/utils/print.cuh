@@ -9,9 +9,16 @@ using namespace cutlass::device_memory;
 
 namespace lib {
     namespace utils {
-        template <typename Engine, typename Layout>
-        void print_device_tensor(Tensor<Engine, Layout> const &tensor) {
-            using T = typename Engine::value_type;
+        template <typename T>
+        T get_device_value(T const *dev_ptr) {
+            T host_value;
+            copy_to_host(&host_value, dev_ptr, 1);
+            return host_value;
+        }
+
+        template <typename TensorA>
+        void print_device_tensor(TensorA const &tensor) {
+            using T = typename TensorA::value_type;
 
             std::vector<T> host_mem(cosize(tensor.layout()));
             Tensor host_tensor = make_tensor(host_mem.data(), tensor.layout());
@@ -20,14 +27,13 @@ namespace lib {
             // contiguous.
             for (int i = 0; i < size(tensor); i++) {
                 T *dev_ptr = (tensor.engine().begin() + tensor.layout()(i)).get();
-                T *host_ptr = host_tensor.engine().begin() + host_tensor.layout()(i);
-                copy_to_host(host_ptr, dev_ptr, 1);
+                host_tensor(i) = get_device_value(dev_ptr);
             }
             std::cout << host_tensor << std::endl;
         }
 
-        template <typename Engine, typename Layout>
-        void print_device_tensor(std::string name, Tensor<Engine, Layout> const &tensor) {
+        template <typename TensorA>
+        void print_device_tensor(std::string name, TensorA const &tensor) {
             std::cout << name << ": ";
             print_device_tensor(tensor);
         }

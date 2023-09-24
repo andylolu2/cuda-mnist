@@ -5,12 +5,13 @@
 #include <cute/tensor.hpp>
 #include <iomanip>
 
-#include "lib/dataset/data_loader.hpp"
+#include "lib/dataset/data_loader.cuh"
 #include "lib/modules/linear.cuh"
 #include "lib/modules/mlp.cuh"
 #include "lib/op/cross_entropy_with_logits.cuh"
 #include "lib/op/reduce_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
+#include "lib/utils/device_tensor.cuh"
 #include "lib/utils/gpu_timer.cuh"
 #include "lib/utils/print.cuh"
 
@@ -34,17 +35,12 @@ int main(int argc, char const* argv[]) {
     // Load MNIST dataset
     auto loader = lib::mnist::DataLoader<half_t>(mnist_path, lib::mnist::Split::TRAIN, B);
 
-    // Activations on device
-    DeviceAllocation<half_t> y_data(B * CLASSES);
-    Tensor y = make_tensor(make_gmem_ptr(y_data.get()), make_shape(B, CLASSES));
-    DeviceAllocation<half_t> loss_data(B);
-    Tensor loss = make_tensor(make_gmem_ptr(loss_data.get()), make_shape(B));
-    DeviceAllocation<half_t> loss_scalar_data(1);
-    Tensor loss_scalar = make_tensor(make_gmem_ptr(loss_scalar_data.get()), make_shape(_1{}));
-    DeviceAllocation<half_t> dy_data(B * CLASSES);
-    Tensor dy = make_tensor(make_gmem_ptr(dy_data.get()), make_shape(B, CLASSES));
-    DeviceAllocation<half_t> dx_data(B * W * H);
-    Tensor dx = make_tensor(make_gmem_ptr(dx_data.get()), make_shape(B, W * H));
+    // Activations
+    DeviceTensor y = make_device_tensor<half_t>(make_shape(B, CLASSES));
+    DeviceTensor loss = make_device_tensor<half_t>(make_shape(B));
+    DeviceTensor loss_scalar = make_device_tensor<half_t>(make_shape(_1{}));
+    DeviceTensor dy = make_device_tensor<half_t>(make_shape(B, CLASSES));
+    DeviceTensor dx = make_device_tensor<half_t>(make_shape(B, W * H));
 
     lib::module::MLP mlp(B, W * H, layer_sizes);
     mlp.init();
@@ -58,17 +54,19 @@ int main(int argc, char const* argv[]) {
     for (int step = 1; step <= steps; ++step) {
         loader.next();  // Update x and y_true
 
-        mlp.forward(x, y);
-        lib::op::cross_entropy_with_logits_bwd(y, y_true, dy);
-        mlp.backward(x, dy, dx);
+        // lib::utils::print_device_tensor("x", x);
+        // lib::utils::print_device_tensor("y_true", y_true);
 
-        if (step % 500 == 0) {
-            std::cout << "Step: " << step << std::endl;
-            lib::op::cross_entropy_with_logits_fwd(y, y_true, loss);
-            Tensor loss_expanded = lib::op::expand<1>(loss, 1);  // (B) -> (B, 1)
-            lib::op::mean<0>(loss_expanded, loss_scalar);        // (B, 1) -> (1)
+        mlp.forward(x, y.view());
+        lib::op::cross_entropy_with_logits_bwd(y.view(), y_true, dy.view());
+        mlp.backward(x, dy.view(), dx.view());
 
-            lib::utils::print_device_tensor("loss", loss_scalar);
+        if (step % 100 == 0) {
+            lib::op::cross_entropy_with_logits_fwd(y.view(), y_true, loss.view());
+            Tensor loss_expanded = lib::op::expand<1>(loss.view(), 1);  // (B) -> (B, 1)
+            lib::op::mean<0>(loss_expanded, loss_scalar.view());        // (B, 1) -> (1)
+            half_t loss_value = lib::utils::get_device_value(loss_scalar.data_ptr());
+            std::cout << "Step: " << step << ", loss: " << loss_value << std::endl;
         }
 
         mlp.update(learning_rate);

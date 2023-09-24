@@ -10,18 +10,10 @@ using namespace cute;
 
 namespace lib {
     namespace op {
-        template <
-            typename EngineA,
-            typename LayoutA,
-            typename EngineB,
-            typename LayoutB,
-            typename EngineC,
-            typename LayoutC>
+        template <typename TensorA, typename TensorB, typename TensorC>
         __global__ void cross_entropy_with_logits_fwd_kernel(
-            Tensor<EngineA, LayoutA> y_pred,
-            Tensor<EngineB, LayoutB> y_true,
-            Tensor<EngineC, LayoutC> loss) {
-            using TC = typename EngineC::value_type;
+            TensorA y_pred, TensorB y_true, TensorC loss) {
+            using TC = typename TensorC::value_type;
 
             // A batch is handled by one thread
             int batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -38,42 +30,24 @@ namespace lib {
                     sum += cutlass::fast_exp(y_pred(batch_idx, i) - max_v);
                 }
 
-                int label = y_true(batch_idx);
-                assert(label >= 0 && label < size<1>(y_pred));
-
+                int label = static_cast<int>(y_true(batch_idx));
                 TC log_p =
                     static_cast<TC>(y_pred(batch_idx, label) - max_v - cutlass::fast_log(sum));
                 loss(batch_idx) = -log_p;
             }
         }
 
-        template <
-            typename EngineA,
-            typename LayoutA,
-            typename EngineB,
-            typename LayoutB,
-            typename EngineC,
-            typename LayoutC>
-        void cross_entropy_with_logits_fwd(
-            Tensor<EngineA, LayoutA> y_pred,
-            Tensor<EngineB, LayoutB> y_true,
-            Tensor<EngineC, LayoutC> loss) {
-            static_assert(LayoutA::rank == 2, "y_pred should be a 2D matrix");
-            static_assert(LayoutB::rank == 1, "y_true should be a 1D matrix");
-            static_assert(LayoutC::rank == 1, "loss should be a 1D matrix");
+        template <typename TensorA, typename TensorB, typename TensorC>
+        void cross_entropy_with_logits_fwd(TensorA y_pred, TensorB y_true, TensorC loss) {
+            static_assert(TensorA::rank == 2, "y_pred should be a 2D matrix");
+            static_assert(TensorB::rank == 1, "y_true should be a 1D matrix");
+            static_assert(TensorC::rank == 1, "loss should be a 1D matrix");
 
             assert(size<0>(y_pred) == size<0>(y_true));
             assert(size<0>(y_pred) == size<0>(loss));
 
             auto [grid_size, block_size] = launch_config(
-                cross_entropy_with_logits_fwd_kernel<
-                    EngineA,
-                    LayoutA,
-                    EngineB,
-                    LayoutB,
-                    EngineC,
-                    LayoutC>,
-                size<0>(y_pred));
+                cross_entropy_with_logits_fwd_kernel<TensorA, TensorB, TensorC>, size<0>(y_pred));
             cross_entropy_with_logits_fwd_kernel<<<grid_size, block_size>>>(y_pred, y_true, loss);
         }
 
@@ -87,23 +61,15 @@ namespace lib {
          * @param y_true: 1D matrix of shape (batch_size)
          * @param dy_pred: 2D matrix of shape (batch_size, num_classes)
          */
-        template <
-            typename EngineA,
-            typename LayoutA,
-            typename EngineB,
-            typename LayoutB,
-            typename EngineC,
-            typename LayoutC>
+        template <typename TensorA, typename TensorB, typename TensorC>
         __global__ void cross_entropy_with_logits_bwd_kernel(
-            Tensor<EngineA, LayoutA> y_pred,
-            Tensor<EngineB, LayoutB> y_true,
-            Tensor<EngineC, LayoutC> dy_pred) {
+            TensorA y_pred, TensorB y_true, TensorC dy_pred) {
             /**
              * Backward formula is:
              * dy_pred = (softmax(y_pred) - y_true) / batch_size
              * The / batch_size comes from taking the mean of the loss.
              */
-            using TC = typename EngineC::value_type;
+            using TC = typename TensorC::value_type;
 
             // A batch is handled by one thread
             int batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -125,38 +91,22 @@ namespace lib {
                 for (int i = 0; i < size<1>(y_pred); ++i) {
                     float p = cutlass::fast_exp(float(y_pred(batch_idx, i)) - max_v) / sum;
                     float grad = i == label ? p - 1.0f : p;
-                    dy_pred(batch_idx, i) = TC(grad / float(batch_size));
+                    dy_pred(batch_idx, i) = static_cast<TC>(grad / float(batch_size));
                 }
             }
         }
 
-        template <
-            typename EngineA,
-            typename LayoutA,
-            typename EngineB,
-            typename LayoutB,
-            typename EngineC,
-            typename LayoutC>
-        void cross_entropy_with_logits_bwd(
-            Tensor<EngineA, LayoutA> y_pred,
-            Tensor<EngineB, LayoutB> y_true,
-            Tensor<EngineC, LayoutC> dy_pred) {
-            static_assert(LayoutA::rank == 2, "y_pred should be a 2D matrix");
-            static_assert(LayoutB::rank == 1, "y_true should be a 1D matrix");
-            static_assert(LayoutC::rank == 2, "dy_pred should be a 2D matrix");
+        template <typename TensorA, typename TensorB, typename TensorC>
+        void cross_entropy_with_logits_bwd(TensorA y_pred, TensorB y_true, TensorC dy_pred) {
+            static_assert(TensorA::rank == 2, "y_pred should be a 2D matrix");
+            static_assert(TensorB::rank == 1, "y_true should be a 1D matrix");
+            static_assert(TensorC::rank == 2, "dy_pred should be a 2D matrix");
 
             assert(y_pred.shape() == dy_pred.shape());
             assert(size<0>(y_pred) == size<0>(y_true));
 
             auto [grid_size, block_size] = launch_config(
-                cross_entropy_with_logits_bwd_kernel<
-                    EngineA,
-                    LayoutA,
-                    EngineB,
-                    LayoutB,
-                    EngineC,
-                    LayoutC>,
-                size(y_pred));
+                cross_entropy_with_logits_bwd_kernel<TensorA, TensorB, TensorC>, size(y_pred));
             cross_entropy_with_logits_bwd_kernel<<<grid_size, block_size>>>(
                 y_pred, y_true, dy_pred);
         }

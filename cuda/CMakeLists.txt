@@ -8,46 +8,49 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-add_executable(
-    cute_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/cute_test.cu
-)
-set_target_properties(cute_test PROPERTIES CUDA_ARCHITECTURES 75)
-target_compile_options(
-    cute_test PRIVATE
-    -Wall
-    -Wno-unused-function
-    --expt-relaxed-constexpr
-    --extended-lambda
-)
-target_include_directories(
-    cute_test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+# add_executable(
+# cute_test
+# ${CMAKE_CURRENT_SOURCE_DIR}/src/cute_test.cu
+# )
+# set_target_properties(cute_test PROPERTIES CUDA_ARCHITECTURES 75)
+# target_compile_options(
+# cute_test PRIVATE
+# -Wall
+# -Wno-unused-function
+# --expt-relaxed-constexpr
+# --extended-lambda
+# )
+# target_include_directories(
+# cute_test PRIVATE
+# ${CMAKE_CURRENT_SOURCE_DIR}/src
+# ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+# ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+# )
+
+# add_executable(
+# playground
+# ${CMAKE_CURRENT_SOURCE_DIR}/src/playground.cu
+# )
+# set_target_properties(playground PROPERTIES CUDA_ARCHITECTURES 75)
+# target_compile_options(
+# playground PRIVATE
+# -Wno-unused-function
+# )
+# target_include_directories(
+# playground PRIVATE
+# ${CMAKE_CURRENT_SOURCE_DIR}/src
+# ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
+# ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
+# )
+FILE(
+    GLOB executables
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/*.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu
 )
 
-add_executable(
-    playground
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/playground.cu
-)
-set_target_properties(playground PROPERTIES CUDA_ARCHITECTURES 75)
-target_compile_options(
-    playground PRIVATE
-    -Wno-unused-function
-)
-target_include_directories(
-    playground PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/cutlass/tools/util/include
-)
-
-FILE(GLOB tests ${CMAKE_CURRENT_SOURCE_DIR}/src/tests/*.cu)
-
-FOREACH(test ${tests})
-    GET_FILENAME_COMPONENT(filename ${test} NAME_WE)
-    add_executable(${filename} ${test})
+FOREACH(exe ${executables})
+    GET_FILENAME_COMPONENT(filename ${exe} NAME_WE)
+    add_executable(${filename} ${exe})
     set_target_properties(${filename} PROPERTIES CUDA_ARCHITECTURES 75)
     target_compile_options(
         ${filename} PRIVATE

@@ -43,10 +43,10 @@ namespace lib {
             typename ShapeD,
             typename StrideD>
         auto gemm(
-            Tensor<EngineA, Layout<ShapeA, StrideA>> &mA,
-            Tensor<EngineB, Layout<ShapeB, StrideB>> &mB,
-            Tensor<EngineC, Layout<ShapeC, StrideC>> &mC,
-            Tensor<EngineD, Layout<ShapeD, StrideD>> &mD,
+            Tensor<EngineA, Layout<ShapeA, StrideA>> const &mA,
+            Tensor<EngineB, Layout<ShapeB, StrideB>> const &mB,
+            Tensor<EngineC, Layout<ShapeC, StrideC>> const &mC,
+            Tensor<EngineD, Layout<ShapeD, StrideD>> const &mD,
             DeviceAllocation<uint8_t> &workspace) {
             static_assert(rank_v<ShapeA> == 2, "A must be a matrix");
             static_assert(rank_v<ShapeB> == 2, "B must be a matrix");
@@ -176,9 +176,9 @@ namespace lib {
             typename ShapeD,
             typename StrideD>
         auto gemm(
-            Tensor<EngineA, Layout<ShapeA, StrideA>> &mA,
-            Tensor<EngineB, Layout<ShapeB, StrideB>> &mB,
-            Tensor<EngineD, Layout<ShapeD, StrideD>> &mD,
+            Tensor<EngineA, Layout<ShapeA, StrideA>> const &mA,
+            Tensor<EngineB, Layout<ShapeB, StrideB>> const &mB,
+            Tensor<EngineD, Layout<ShapeD, StrideD>> const &mD,
             DeviceAllocation<uint8_t> &workspace) {
             return gemm<AccessGranularityBits, ScaleType::Kind::OnlyAlphaScaling>(
                 mA, mB, mD, mD, workspace);

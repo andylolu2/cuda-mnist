@@ -7,6 +7,7 @@
 #include "lib/modules/linear.cuh"
 #include "lib/op/pointwise_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
+#include "lib/utils/device_tensor.cuh"
 
 using namespace cute;
 using namespace cutlass;
@@ -28,10 +29,8 @@ namespace lib {
             int in_features;
             std::vector<int> feature_sizes;
             std::vector<Linear> layers;
-            std::vector<DeviceAllocation<ActivationType>> activations_data;
-            std::vector<ActivationTensor> activations;
-            std::vector<DeviceAllocation<GradType>> d_activations_data;
-            std::vector<DActivationTensor> d_activations;
+            std::vector<DeviceTensor<ActivationType, Layout<ActivationShape>>> activations;
+            std::vector<DeviceTensor<GradType, Layout<ActivationShape>>> d_activations;
 
            public:
             MLP(int batch_size, int in_features, std::vector<int> feature_sizes)
@@ -42,8 +41,6 @@ namespace lib {
 
                 activations.reserve(feature_sizes.size());
                 d_activations.reserve(feature_sizes.size());
-                activations_data.reserve(feature_sizes.size());
-                d_activations_data.reserve(feature_sizes.size());
 
                 for (size_t i = 0; i < feature_sizes.size(); i++) {
                     int in = i == 0 ? in_features : feature_sizes[i - 1];
@@ -51,15 +48,10 @@ namespace lib {
                     layers.emplace_back(batch_size, in, out);
 
                     if (i != feature_sizes.size() - 1) {
-                        activations_data.emplace_back(batch_size * out);
-                        activations.emplace_back(make_tensor(
-                            make_gmem_ptr(activations_data.back().get()),
-                            make_shape(batch_size, out)));
-
-                        d_activations_data.emplace_back(batch_size * out);
-                        d_activations.emplace_back(make_tensor(
-                            make_gmem_ptr(d_activations_data.back().get()),
-                            make_shape(batch_size, out)));
+                        activations.emplace_back(
+                            make_device_tensor<ActivationType>(make_shape(batch_size, out)));
+                        d_activations.emplace_back(
+                            make_device_tensor<GradType>(make_shape(batch_size, out)));
                     }
                 }
             }
@@ -69,17 +61,17 @@ namespace lib {
 
             Linear& operator[](int i) { return layers[i]; }
 
-            void init(std::string mode = "kaiming") {
+            void init(int seed = 0, std::string mode = "kaiming") {
                 for (auto& layer : layers) {
-                    layer.init(mode);
+                    layer.init(seed, mode);
                 }
             }
 
-            void forward(ActivationTensor& x, ActivationTensor& y) {
+            void forward(ActivationTensor const& x, ActivationTensor const& y) {
                 for (size_t i = 0; i < layers.size(); i++) {
                     auto& layer = layers[i];
-                    auto& x_in = i == 0 ? x : activations[i - 1];
-                    auto& x_out = i == layers.size() - 1 ? y : activations[i];
+                    auto& x_in = i == 0 ? x : activations[i - 1].view();
+                    auto& x_out = i == layers.size() - 1 ? y : activations[i].view();
                     layer.forward(x_in, x_out);
                     if (i < layers.size() - 1) {
                         lib::op::relu(x_out, x_out);
@@ -87,12 +79,15 @@ namespace lib {
                 }
             }
 
-            void backward(ActivationTensor& x, DActivationTensor& dy, DActivationTensor& dx) {
+            void backward(
+                ActivationTensor const& x,
+                DActivationTensor const& dy,
+                DActivationTensor const& dx) {
                 for (size_t i = layers.size(); i-- > 0;) {
                     auto& layer = layers[i];
-                    auto x_in = i == 0 ? x : activations[i - 1];
-                    auto dx_in = i == 0 ? dx : d_activations[i - 1];
-                    auto dx_out = i == layers.size() - 1 ? dy : d_activations[i];
+                    auto x_in = i == 0 ? x : activations[i - 1].view();
+                    auto dx_in = i == 0 ? dx : d_activations[i - 1].view();
+                    auto dx_out = i == layers.size() - 1 ? dy : d_activations[i].view();
                     layer.backward(x_in, dx_out, dx_in);
                     if (i > 0) {
                         lib::op::drelu(dx_in, dx_in, x_in);
@@ -109,9 +104,6 @@ namespace lib {
             void clear_grad() {
                 for (auto& layer : layers) {
                     layer.clear_grad();
-                }
-                for (auto& d_activation : d_activations) {
-                    lib::op::constant(d_activation);
                 }
             }
 

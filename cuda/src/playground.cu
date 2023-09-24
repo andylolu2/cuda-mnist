@@ -3,6 +3,7 @@
 #include <cute/tensor.hpp>
 
 #include "lib/op/pointwise_ops.cuh"
+#include "lib/op/reduce_ops.cuh"
 #include "lib/op/tensor_ops.cuh"
 #include "lib/utils/print.cuh"
 

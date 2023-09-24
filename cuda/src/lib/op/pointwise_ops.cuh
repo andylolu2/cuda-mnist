@@ -23,7 +23,8 @@ namespace lib {
             }
 
             template <typename NAryFunc, typename TensorOut, typename... TensorIn>
-            void pointwise(TensorOut &output, NAryFunc &func, TensorIn &...inputs) {
+            void pointwise(
+                TensorOut const &output, NAryFunc const &func, TensorIn const &...inputs) {
                 auto [grid_size, block_size] = launch_config(
                     n_ary_pointwise_kernel<NAryFunc, TensorOut, TensorIn...>, size(output));
                 n_ary_pointwise_kernel<<<grid_size, block_size>>>(output, func, inputs...);
@@ -140,61 +141,61 @@ namespace lib {
         }  // namespace detail
 
         template <typename Tensor, typename T = typename Tensor::value_type>
-        void constant(Tensor &output, T value = static_cast<T>(0)) {
+        void constant(Tensor const &output, T value = static_cast<T>(0)) {
             detail::Constant<T> func{value};
             detail::pointwise(output, func);
         }
 
         template <typename Tensor, typename T = int>
-        void arange(Tensor &output, T start = 0, T step = 1) {
+        void arange(Tensor const &output, T start = 0, T step = 1) {
             detail::Arange<T> func{start, step};
             detail::pointwise(output, func);
         }
 
         template <typename Tensor>
-        void normal(Tensor &output, float mean = 0.0f, float stddev = 1.0f, int seed = 0) {
+        void normal(Tensor const &output, float mean = 0.0f, float stddev = 1.0f, int seed = 0) {
             detail::Normal func{mean, stddev};
             detail::pointwise_random(output, func, seed);
         }
 
         template <typename Tensor>
-        void uniform(Tensor &output, float min = 0.0f, float max = 1.0f, int seed = 0) {
+        void uniform(Tensor const &output, float min = 0.0f, float max = 1.0f, int seed = 0) {
             detail::Uniform func{min, max};
             detail::pointwise_random(output, func, seed);
         }
 
         template <typename TensorOut, typename TensorIn>
-        void convert(TensorOut &output, TensorIn &input) {
+        void convert(TensorOut const &output, TensorIn const &input) {
             detail::Convert func;
             detail::pointwise(output, func, input);
         }
 
         template <typename TensorOut, typename TensorIn>
-        void relu(TensorOut &output, TensorIn &input) {
+        void relu(TensorOut const &output, TensorIn const &input) {
             detail::ReLU func;
             detail::pointwise(output, func, input);
         }
 
         template <typename TensorOut, typename TensorDy, typename TensorX>
-        void drelu(TensorOut &output, TensorDy &dy, TensorX &x) {
+        void drelu(TensorOut const &output, TensorDy const &dy, TensorX const &x) {
             detail::dReLU func;
             detail::pointwise(output, func, dy, x);
         }
 
         template <typename TensorOut, typename TensorX, typename TensorY>
-        void add(TensorOut &output, TensorX &x, TensorY &y) {
+        void add(TensorOut const &output, TensorX const &x, TensorY const &y) {
             detail::Add func;
             detail::pointwise(output, func, x, y);
         }
 
         template <typename TensorOut, typename TensorX, typename TensorDx>
-        void sgd(TensorOut &output, TensorX &x, TensorDx &dx, float lr) {
+        void sgd(TensorOut const &output, TensorX const &x, TensorDx const &dx, float lr) {
             detail::SGD func{lr};
             detail::pointwise(output, func, x, dx);
         }
 
         template <typename TensorOut, typename TensorX, typename TensorDx>
-        void lion(TensorOut &output, TensorX &x, TensorDx &dx, float lr) {
+        void lion(TensorOut const &output, TensorX const &x, TensorDx const &dx, float lr) {
             detail::LION func{lr};
             detail::pointwise(output, func, x, dx);
         }
