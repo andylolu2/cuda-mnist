@@ -101,12 +101,6 @@ namespace lib {
                 }
             }
 
-            void clear_grad() {
-                for (auto& layer : layers) {
-                    layer.clear_grad();
-                }
-            }
-
             /**
              * Compute the number of TFLOPs for each training step
              */

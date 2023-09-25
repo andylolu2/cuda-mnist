@@ -5,6 +5,7 @@
 #include <cute/tensor.hpp>
 
 #include "lib/op/launch_config.cuh"
+#include "lib/utils/macros.cuh"
 
 using namespace cute;
 
@@ -118,10 +119,10 @@ namespace lib {
             struct SGD {
                 template <typename Tx, typename Tdx>
                 __device__ auto operator()(int idx, Tx x, Tdx dx) {
-                    return x - static_cast<Tx>(lr) * static_cast<Tx>(dx);
+                    return x - lr * static_cast<Tx>(dx);
                 }
 
-                float lr;
+                const float lr;
             };
 
             struct LION {

@@ -7,3 +7,4 @@ data/
 torch/.pytorch
 
 __pycache__
+logs/

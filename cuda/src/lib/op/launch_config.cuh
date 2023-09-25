@@ -6,16 +6,12 @@ using namespace cute;
 
 namespace lib {
     namespace op {
+        const uint32_t N_THREADS = 128;
+
         template <typename T>
         std::tuple<int, int> launch_config(T kernel, int problem_size) {
-            int block_size;
-            int min_grid_size;
-
-            cudaOccupancyMaxPotentialBlockSize(&min_grid_size, &block_size, kernel, 0, 0);
-
-            int grid_size = (problem_size + block_size - 1) / block_size;
-
-            return std::make_tuple(grid_size, block_size);
+            int n_blocks = (problem_size + N_THREADS - 1) / N_THREADS;
+            return std::make_tuple(n_blocks, N_THREADS);
         }
     }  // namespace op
 }  // namespace lib

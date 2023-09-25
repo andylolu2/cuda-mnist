@@ -69,7 +69,7 @@ namespace lib {
             static_assert(
                 std::is_same_v<LayoutV2C, LayoutV2D>, "C and D must have the same layout");
 
-            using ElementAccumulator = float;                   // data type of accumulator
+            using ElementAccumulator = half_t;                  // data type of accumulator
             using ElementComputeEpilogue = ElementAccumulator;  // data type of epilogue operations
             using MMAOp = arch::OpClassTensorOp;
             using SmArch = arch::Sm75;

@@ -20,19 +20,20 @@ using namespace cutlass;
 
 int main(int argc, char const* argv[]) {
     if (argc < 3) {
-        std::cout << "Usage: " << argv[0] << " <path-to-mnist> steps" << std::endl;
+        std::cout << "Usage: " << argv[0] << " <path-to-mnist> steps hidden_size seed" << std::endl;
         return 1;
     }
     std::string mnist_path = argv[1];
     int steps = std::stoi(argv[2]);
+    int hidden_size = argc > 3 ? std::stoi(argv[3]) : 128;
+    int seed = argc > 4 ? std::stoi(argv[4]) : 0;
     int W = 28;
     int H = 28;
     int B = 32;
     int CLASSES = 10;
-    std::vector<int> layer_sizes = {128, 128, 128, CLASSES};
+    std::vector<int> layer_sizes = {hidden_size, hidden_size, hidden_size, CLASSES};
     float learning_rate = 0.003f;
 
-    // Load MNIST dataset
     auto loader = lib::mnist::DataLoader<half_t>(mnist_path, lib::mnist::Split::TRAIN, B);
 
     // Activations
@@ -43,7 +44,7 @@ int main(int argc, char const* argv[]) {
     DeviceTensor dx = make_device_tensor<half_t>(make_shape(B, W * H));
 
     lib::module::MLP mlp(B, W * H, layer_sizes);
-    mlp.init();
+    mlp.init(seed);
 
     lib::utils::GpuTimer timer;
     timer.start();
@@ -52,10 +53,7 @@ int main(int argc, char const* argv[]) {
     Tensor y_true = loader.get_batch_labels();
 
     for (int step = 1; step <= steps; ++step) {
-        loader.next();  // Update x and y_true
-
-        // lib::utils::print_device_tensor("x", x);
-        // lib::utils::print_device_tensor("y_true", y_true);
+        loader.next();  // Updates x and y_true
 
         mlp.forward(x, y.view());
         lib::op::cross_entropy_with_logits_bwd(y.view(), y_true, dy.view());
@@ -70,7 +68,6 @@ int main(int argc, char const* argv[]) {
         }
 
         mlp.update(learning_rate);
-        mlp.clear_grad();
     }
 
     timer.stop();

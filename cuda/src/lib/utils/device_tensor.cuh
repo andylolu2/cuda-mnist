@@ -4,6 +4,8 @@
 
 #include <cute/tensor.hpp>
 
+#include "lib/utils/macros.cuh"
+
 using namespace cute;
 using namespace cutlass;
 

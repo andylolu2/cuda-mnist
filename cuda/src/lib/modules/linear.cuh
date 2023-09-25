@@ -128,11 +128,6 @@ namespace lib {
                 lib::op::sgd(b_full.view(), b_full.view(), db.view(), lr);
             }
 
-            void clear_grad() {
-                lib::op::constant(dw.view());
-                lib::op::constant(db.view());
-            }
-
             /**
              * Compute the number of TFLOPs for each training step
              */
