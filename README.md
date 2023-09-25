@@ -6,12 +6,12 @@ I wanted to know how much overhead is added by Python-based ML frameworks like P
 
 ## So... how slow is PyTorch?
 
-It's... pretty slow, at least for small networks. Even using PyTorch 2.0's `torch.compile` functionality (with `mode="max-autotune"` and `fullgraph=True`, which is supposed to remove all Python overhead), it is can still be up to $6$ x slower than CUDA (with Hidden dim = $128$)!
+It's... pretty slow, at least for small networks. Even using PyTorch 2.0's `torch.compile` functionality (with `mode="max-autotune"` and `fullgraph=True`, which is supposed to remove all Python overhead), it is can still be up to $6$ times slower than CUDA!
 
-This overhead goes down as the network gets larger, never completely goes away. It asympotically approaches $\approx1.2$ x slower than CUDA.
+This overhead goes down as the network gets larger, never completely goes away. It asympotically approaches $\approx1.2$ times slower than CUDA.
 
 <p align="center">
-    <img src="./docs/time_graph.png" width="800" alt="Time graph">
+    <img src="./docs/time_graph.png" width="600" alt="Time graph">
 </p>
 
 There are a few reasons why PyTorch is (asymptotically) slower than CUDA:
@@ -29,7 +29,7 @@ There are a few reasons why PyTorch is (asymptotically) slower than CUDA:
 Just to make sure my CUDA implementation is correct. The loss curves look pretty much identical.
 
 <p align="center">
-    <img src="./docs/loss_graph.png" width="800" alt="Loss graph">
+    <img src="./docs/loss_graph.png" width="600" alt="Loss graph">
 </p>
 
 ## Things I learned
@@ -52,11 +52,9 @@ Matrix multiplication is often referred to as GEMM (General Matrix Multiplicatio
 
 ### Thread block level
 
-Suppose we want to multiply two matrices $A \in \mathbb{R}^{M \times K}$ and $B \in \mathbb{R}^{K \times N}$, and store the result in $C \in \mathbb{R}^{M \times N}$. To parallelise this operation, we will split $A$ and $B$ into smaller matrices, mat-mul them individually and concatenate the results to form $C$.
+Suppose we want to multiply two matrices $A \in \mathbb{R}^{M \times K}$ and $B \in \mathbb{R}^{K \times N}$ to make $C \in \mathbb{R}^{M \times N} = AB$. To parallelise this operation, we will split $A$ and $B$ into smaller matrices, mat-mul them individually and concatenate the results to form $C$.
 
-Specifcally, we can partition $M$ into chunks of size $M'$ and $N$ into chunks of size $N'$.
-
-Mathematically, this looks like:
+Specifcally, we can partition $M$ into chunks of size $M'$ and $N$ into chunks of size $N'$. Mathematically, this looks like:
 
 $$
 \begin{align}
