@@ -24,17 +24,9 @@ There are a few reasons why PyTorch is (asymptotically) slower than CUDA:
 > 1. I preloaded all data into memory in order to minimise the host-device data transfer overhead.
 > 2. I allowed the PyTorch implementation to have a few warm-up steps before timing, to allow the JIT compiler to compile the graph.
 
-## Loss curve sanity check
-
-Just to make sure my CUDA implementation is correct. The loss curves look pretty much identical.
-
-<p align="center">
-    <img src="./docs/loss_graph.png" width="600" alt="Loss graph">
-</p>
-
 ## Things I learned
 
-### How matrix multiplication works
+### Matrix multiplication on GPU
 
 The [CUTLASS docs](https://github.com/NVIDIA/cutlass/blob/main/media/docs/) have a good explanation of how matrix multiplication works. I'll try to summarise it here.
 
@@ -50,9 +42,9 @@ Matrix multiplication is often referred to as GEMM (General Matrix Multiplicatio
 > | Warp         | -                | Warp scheduler, Tensor core |
 > | Thread       | Registers        | ALUs                        |
 
-### Thread block level
+### Paralleling matrix multiplication
 
-Suppose we want to multiply two matrices $A \in \mathbb{R}^{M \times K}$ and $B \in \mathbb{R}^{K \times N}$ to make $C \in \mathbb{R}^{M \times N} = AB$. We say that the global problem size is $(M, N, K)$. To parallelise this operation, we will split $A$ and $B$ into smaller matrices, matrix multiply them individually and concatenate the results to form $C$.
+Suppose we want to multiply two matrices $A \in \mathbb{R}^{M \times K}$ and $B \in \mathbb{R}^{K \times N}$ to make $C \in \mathbb{R}^{M \times N} = AB$. In this case, we say that the problem size is $(M, N, K)$. To parallelise this operation, we will split $A$ and $B$ into smaller matrices, matrix multiply them individually and concatenate the results to form $C$.
 
 Specifically, we can partition $M$ into chunks of size $M'$ and $N$ into chunks of size $N'$. Mathematically, this looks like:
 
@@ -60,69 +52,98 @@ $$
 \begin{align}
     A &= \begin{bmatrix}
         A_{1} \\
-        A_{2} \\
         \vdots \\
         A_{M/M'} \\
     \end{bmatrix} \text{, where } A_{i} \in \mathbb{R}^{M' \times K} \\
     B &= \begin{bmatrix}
-        B_{1} & B_{2} & \cdots & B_{N/N'} \\
+        B_{1} & \cdots & B_{N/N'} \\
     \end{bmatrix} \text{, where } B_{j} \in \mathbb{R}^{K \times N'} \\
+    C_{i,j} &= A_i B_j \\
     C &= \begin{bmatrix}
-        A_{1}B_{1} & A_{1}B_{2} & \cdots & A_{1}B_{N/N'} \\
-        A_{2}B_{1} & A_{2}B_{2} & \cdots & A_{2}B_{N/N'} \\
-        \vdots & \vdots & \ddots & \vdots \\
-        A_{M/M'}B_{1} & A_{M/M'}B_{2} & \cdots & A_{M/M'}B_{N/N'} \\
+        C_{1,1} & \cdots & C_{1,N/N'} \\
+        \vdots & \ddots & \vdots \\
+        C_{M/M',1}  & \cdots & C_{M/M',N/N'} \\
     \end{bmatrix}
 \end{align}
 $$
 
-We can see that each sub-matrix $C_{ij} = A_i B_j$ in $C$ are independent of each other, so we can easily parallelise the computation of each sub-matrix. We do this by assigning each sub-matrix-multiplication problem of size $(M', N', K)$ to a **thread block**.
+We can see that each sub-matrix $C_{i,j} = A_i B_j$ in $C$ are independent of each other, so we can easily parallelise the computation of each sub-matrix. 
 
-In practice, $K$ might be too large to directly compute on. Instead, a typical implementation will split $K$ into chunks of size $K'$ and sum over the partial results. Mathematically, this looks like:
+In practice, $K$ might be too large to directly compute on. Instead, a typical implementation will split $K$ into chunks of size $K'$, iterate over each chunk, and accumulate (by summing) over the partial results. This is known as **serial-K reduction**. (As opposed to [**parallel-K reduction**](TODO)). Mathematically, this looks like:
 
 $$
 \begin{align}
     A_i &= \begin{bmatrix}
-        A_i^{(1)} & A_i^{(2)} & \cdots & A_i^{(K/K')}
+        A_{i,1} & \cdots & A_{i,K/K'}
     \end{bmatrix}, \text{ where } A_i^{(k)} \in \mathbb{R}^{M' \times K'} \\
     B_j &= \begin{bmatrix}
-        B_j^{(1)} \\
-        B_j^{(2)} \\
+        B_{j,1} \\
         \vdots \\
-        B_j^{(K/K')} \\
+        B_{j,K/K'} \\
     \end{bmatrix}, \text{ where } B_j^{(k)} \in \mathbb{R}^{K' \times N'} \\
-    C_{ij}^{(k)} &= A_i^{(k)} B_j^{(k)} \\
-    C_{ij} &= \sum_{k=1}^{K/K'} C_{ij}^{(k)}
+    C_{ij} &= \sum_{k=1}^{K/K'} A_{i,k} B_{j,k}
 \end{align}
 $$
 
-This is known as **serial-K reduction**. In the implementation, we use $(M', N', K') = (128, 256, 64)$.
+### Data redundancy
 
-### Warp level
+The key observation is that many of the sub-inputs $A_i$ and $B_j$ are reused across different sub-matrix multiplications. For example, $A_1$ is required for $C_{1,1}$, $C_{1,2}$, ..., $C_{1,N/N'}$ and $B_1$ is required for $C_{1,1}$, $C_{2,1}$, ..., $C_{M/M',1}$. We can get the highest throughput if we can minimise redundant data movement and reuse the loaded sub-inputs as much as possible.
 
-Warps within the same thread block must collective solve a sub-problem of size $(M', N', K')$. We further parallelise this across warps by splitting into sub-sub-problems of size $(M'', N'', K'')$. Mathematically, this looks like:
+In CUDA, there are three types of user-accessible memory:
+
+| Memory type   | Capacity             | Bandwidth & latency  | Shared by     |
+| ------------- | -------------------- | -------------------- | ------------- |
+| Global memory | :star: :star: :star: | :star:               | Thread blocks |
+| Shared memory | :star: :star:        | :star: :star:        | Warps         |
+| Registers     | :star:               | :star: :star: :star: | Tensor cores  |
+
+Each memory level acts as a (user-managed) cache for the level above it. To minimise the time spent on data movement, we want to load the data into the low level caches and reuse them to compute as many sub-matrix multiplications as possible.
+
+#### Thread block level
+
+On the thread block level, the problem is partitioned into sub-problems of size $(M', N', K')$. Thus, each thread block is responsible for computing the fragment $C_{i,j} \in \mathbb{R}^{M' \times N'}$:
 
 $$
-\begin{align}
-    A_i^{(k)} &= \begin{bmatrix}
-        A_i^{(k)(1,1)} & \cdots & A_i^{(k)(1, K''/K')} \\
-        \vdots & \ddots & \vdots \\
-        A_i^{(k)(M''/M', 1)}  & \cdots & A_i^{(k)(M''/M', K''/K')} \\
-    \end{bmatrix}, \text{ where } A_i^{(k)(m, n)} \in \mathbb{R}^{M'' \times K''} \\
-    B_j^{(k)} &= \begin{bmatrix}
-        B_j^{(k)(1,1)} & \cdots & B_j^{(k)(1, N''/N')} \\
-        \vdots & \ddots & \vdots \\
-        B_j^{(k)(K''/K', 1)}  & \cdots & B_j^{(k)(K''/K', N''/N')} \\
-    \end{bmatrix}, \text{ where } B_j^{(k)(m, n)} \in \mathbb{R}^{K'' \times N''} \\
-    C_{ij}^{(k)(m, n)} &= \sum_{l=1}^{K''/K'} A_i^{(k)(m, l)} B_j^{(k)(l, n)} \\
-    C_{ij}^{(k)} &= \begin{bmatrix}
-        C_{ij}^{(k)(1,1)} & \cdots & C_{ij}^{(k)(1, N''/N')} \\
-        \vdots & \ddots & \vdots \\
-        C_{ij}^{(k)(M''/M', 1)}  & \cdots & C_{ij}^{(k)(M''/M', N''/N')} \\
-    \end{bmatrix} \\
-\end{align}
+C_{i,j} = \sum_{k=1}^{K/K'} A_{i,k} B_{j,k}
 $$
+
+where $A_{i,k} \in \mathbb{R}^{M' \times K'}$ and $B_{j,k} \in \mathbb{R}^{K' \times N'}$.
+
+Redundant data movement is minimised by loading the sub-inputs $A_{i,k}$ and $B_{j,k}$ into **shared memory**. Any accesses to $A_{i,k}$ and $B_{j,k}$ *within* a thread block will then be served by the shared memory (instead of the global memory).
+
+In my implementation, a partition size of $(M', N', K') = (128, 256, 32)$ is used.
+
+#### Warp level
+
+On the warp level, the sub-problem is further partitioned into sub-sub-problems of size $(M'', N'', K'')$. Thus, each warp is responsible for computing the fragment $C_{i,j}^{(m,n)} \in \mathbb{R}^{M'' \times N''}$:
+
+$$
+C_{i,j}^{(m,n)} = \sum_{k=1}^{K/K'} \sum_{l=1}^{K'/K''} A_{i,k}^{(m,l)} B_{j,k}^{(l,n)}
+$$
+
+where $A_{i,k}^{(m,l)} \in \mathbb{R}^{M'' \times K''}$ and $B_{j,k}^{(l,n)} \in \mathbb{R}^{K'' \times N''}$.
+
+Redundant data movement is minimised by loading the sub-inputs $A_{i,k}^{(m,l)}$ and $B_{j,k}^{(l,n)}$ into **registers**. Any accesses to $A_{i,k}^{(m,l)}$ and $B_{j,k}^{(l,n)}$ *within* a warp will then be served by the fast registers.
+
+In my implementation, a warp-level partition size of $(M'', N'', K'') = (64, 64, 32)$ is used.
+
+#### Tensor core level
+
+To actually perform the matrix multiplication, we use the **Tensor Cores** on the GPU. My GPU (RTX 2060) has second generation Tensor Cores, which is specialised to solve problems of size $(M''', N''', K''') = (16, 8, 8)$. Thus, we even further partition $C_{i,j}^{(m,n)}$ into sub-sub-sub-problems of size $(16, 8, 8)$:
+
+$$
+C_{i,j}^{(m,n)|(a,b)} = \sum_{k=1}^{K/K'} \sum_{l=1}^{K'/K''} \sum_{p=1}^{K''/8} A_{i,k}^{(m,l)|(a,p)} B_{j,k}^{(l,n)|(p,b)}
+$$
+
+where $A_{i,k}^{(m,l)|(a,p)} \in \mathbb{R}^{16 \times 8}$ and $B_{j,k}^{(l,n)|(p,b)} \in \mathbb{R}^{8 \times 8}$. Here, all the inputs are already in the registers and thus the data movement overhead is minimal. 
 
 > [!NOTE]
->
-> We didn't split the problem into chunks of $(M'', N'', K'')$ at the thread block level to improve memory-movement efficiency. The warps within the same thread block 
+> Tensor Core operations are **warp-level instructions**, meaning that all the threads in a warp need to execute the Tensor Core instruction at the same time, collaboratively preparing the data to be consumed by **one** Tensor Core.
+
+## Loss curve sanity check
+
+Comparing the loss curves of the PyTorch and CUDA implementations, we can see that they are pretty much identical.
+
+<p align="center">
+    <img src="./docs/loss_graph.png" width="600" alt="Loss graph">
+</p>
