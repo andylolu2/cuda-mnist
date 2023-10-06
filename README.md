@@ -8,7 +8,7 @@ I wanted to know how much overhead is added by Python-based ML frameworks like P
 
 It's... pretty slow, at least for small networks. Even using PyTorch 2.0's `torch.compile` functionality (with `mode="max-autotune"` and `fullgraph=True`, which is supposed to remove all Python overhead), it can still be up to $6$ times slower than CUDA!
 
-This overhead goes down as the network gets larger, never completely goes away. It asymptotically approaches $\approx1.2$ times slower than CUDA.
+This overhead goes down as the network gets larger, though it never completely goes away. It asymptotically approaches $\approx 20\%$ times slower than CUDA.
 
 <p align="center">
     <img src="./docs/time_graph.png" width="600" alt="Time graph">
@@ -125,11 +125,14 @@ where $A_{i,k}^{(m,l)} \in \mathbb{R}^{M'' \times K''}$ and $B_{j,k}^{(l,n)} \in
 
 Redundant data movement is minimised by loading the sub-inputs $A_{i,k}^{(m,l)}$ and $B_{j,k}^{(l,n)}$ into **registers**. Any accesses to $A_{i,k}^{(m,l)}$ and $B_{j,k}^{(l,n)}$ *within* a warp will then be served by the fast registers.
 
+> [!NOTE]
+> It is worth noting that registers are **thread-level only**. This means that inputs in a register cannot be accessed by other threads in a warp. The exact way of how $A_{i,k}^{(m,l)}$ and $B_{j,k}^{(l,n)}$ are partitioned into the registers of each thread depends on the specific instruction used. The NVIDIA docs on [Warp Level Matrix Multiply-Accumulate Instructions](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions) gives a detailed description for each instruction.
+
 In my implementation, a warp-level partition size of $(M'', N'', K'') = (64, 64, 32)$ is used.
 
 #### Tensor core level
 
-To actually perform the matrix multiplication, we use the **Tensor Cores** on the GPU. My GPU (RTX 2060) has second generation Tensor Cores, which is specialised to solve problems of size $(M''', N''', K''') = (16, 8, 8)$. Thus, we even further partition $C_{i,j}^{(m,n)}$ into sub-sub-sub-problems of size $(16, 8, 8)$:
+To actually perform the matrix multiplication, we use the **Tensor Cores** on the GPU. My GPU (RTX 2060) has the second generation Tensor Cores, which are specialised to solve problems of size $(M''', N''', K''') = (16, 8, 8)$. Thus, we even further partition $C_{i,j}^{(m,n)}$ into sub-sub-sub-problems of size $(16, 8, 8)$:
 
 $$
 C_{i,j}^{(m,n)|(a,b)} = \sum_{k=1}^{K/K'} \sum_{l=1}^{K'/K''} \sum_{p=1}^{K''/8} A_{i,k}^{(m,l)|(a,p)} B_{j,k}^{(l,n)|(p,b)}
@@ -139,6 +142,33 @@ where $A_{i,k}^{(m,l)|(a,p)} \in \mathbb{R}^{16 \times 8}$ and $B_{j,k}^{(l,n)|(
 
 > [!NOTE]
 > Tensor Core operations are **warp-level instructions**, meaning that all the threads in a warp need to execute the Tensor Core instruction at the same time, collaboratively preparing the data to be consumed by **one** Tensor Core.
+
+### Even more optimisations
+
+#### Parallel-K reduction
+
+In cases where $M$ and $N$ are small, we might only have a few thread blocks. For example in my implementation, I chose the thread block partition size to be $(M', N') = (128, 256)$. If the original problem size has $M \leq 128$ and $N \leq 256$, we will only have one thread block. This is an issue because each thread block can only execute in one **Streaming Multiprocessor** (SM) but most GPUs have multiple SMs. For example, my RTX 2060 has 30 SMs. This means that we are only using $\frac{1}{30}$ of the GPU's compute power!
+
+In cases where $K$ is large (even though $M$ and $N$ are small), we can utilise more parallelism by doing **parallel-K reduction**. Recall that in *serial*-K reduction, each thread block iterates over the following sum:
+
+$$
+C_{i,j} = \sum_{k=1}^{K/K'} A_{i,k} B_{j,k}
+$$
+
+and accumulates the intermediate results into $C_{i,j}$. In parallel-K reduction, we instead assign each thread block to only compute *one element of the sum* (i.e. $A_{i,k} B_{j,k}$). This allows us to increase the number of thread blocks by a factor of $K/K'$, thus utilising more SMs. 
+
+The caveat is that now, we need to *allocate more memory* to store the results from each thread block, and *invoke a second kernel* to perform a final reduction over the partial results to get $C_{i,j}$.
+
+#### Software pipelining
+
+Normally, CUDA hides the latency of memory accesses by scheduling other warps to execute while a warp is waiting for data. This requires us to have enough warps to mask the latency. 
+
+However, the number of warps is typically relatively small when doing GEMM. This is because the number of warps is limited by $\frac{\text{Number of registers per thread block}}{\text{Number of registers per warp}}$, and for GEMM we use a lot of registers per warp to hold as much data as possible. As a result, we might not have enough warps to mask the latency.
+
+> The CUTLASS docs mention that *"The accumulator elements typically occupy at least half a thread's total register budget"*. 
+
+To mitigate this effect, we can use **software pipelining**. In essence, we (manually) preload the data for the next iteration of the loop asynchronously using special instructions.
+
 
 ## Loss curve sanity check
 
