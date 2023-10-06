@@ -24,23 +24,20 @@ There are a few reasons why PyTorch is (asymptotically) slower than CUDA:
 > 1. I preloaded all data into memory in order to minimise the host-device data transfer overhead.
 > 2. I allowed the PyTorch implementation to have a few warm-up steps before timing, to allow the JIT compiler to compile the graph.
 
-## Things I learned
+## Matrix multiplication on GPU
 
-### Matrix multiplication on GPU
-
-The [CUTLASS docs](https://github.com/NVIDIA/cutlass/blob/main/media/docs/) have a good explanation of how matrix multiplication works. I'll try to summarise it here.
+The [CUTLASS docs](https://github.com/NVIDIA/cutlass/blob/main/media/docs/) have a detailed explanation of how matrix multiplication works. I'll try to explain it more intuitively here.
 
 Matrix multiplication is often referred to as GEMM (General Matrix Multiplication) in the CUDA world. Efficient matrix multiplication is highly hardware-specific and so the design of the algorithm maps closely to the hardware architecture.
 
 > [!NOTE]
 > **Brief overview of CUDA architecture**
->
-> | Level        | Memory hierarchy | Hardware feature(s)         |
-> | ------------ | ---------------- | --------------------------- |
-> | Device       | Global memory    | GPU                         |
-> | Thread block | Shared memory    | Streaming multiprocessor    |
-> | Warp         | -                | Warp scheduler, Tensor core |
-> | Thread       | Registers        | ALUs                        |
+> | Level        | Memory hierarchy | Definition                                     |
+> | ------------ | ---------------- | ---------------------------------------------- |
+> | Device       | Global memory    | -                                              |
+> | Thread block | Shared memory    | A collection of warps, executed on a single SM |
+> | Warp         | -                | 32 threads, scheduled by the warp scheduler    |
+> | Thread       | Registers        | Executed on a single CUDA core                 |
 
 ### Paralleling matrix multiplication
 
@@ -167,7 +164,11 @@ However, the number of warps is typically relatively small when doing GEMM. This
 
 > The CUTLASS docs mention that *"The accumulator elements typically occupy at least half a thread's total register budget"*. 
 
-To mitigate this effect, we can use **software pipelining**. In essence, we (manually) preload the data for the next iteration of the loop asynchronously using special instructions.
+To mitigate this effect, we can use **software pipelining**. In essence, we (manually) preload the inputs for the next iteration of the loop asynchronously using special instructions. While the inputs are being loaded, we can continue to compute on the current iteration. It is summarised by the following diagram:
+
+<p align="center">
+    <img src="./docs/software-pipeline.png" width="600" alt="Loss graph">
+</p>
 
 
 ## Loss curve sanity check
