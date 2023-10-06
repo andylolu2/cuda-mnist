@@ -7,22 +7,27 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt update && \
     apt install -y software-properties-common && \
+    add-apt-repository ppa:git-core/ppa && \
     apt-add-repository ppa:fish-shell/release-3 && \
-    apt install -y build-essential wget curl tar ripgrep git tmux fish time cmake
+    apt-add-repository ppa:neovim-ppa/unstable && \
+    apt install -y \
+        build-essential \
+        cmake \
+        curl \
+        fish \
+        git \
+        neovim \
+        ripgrep \
+        sudo \
+        tar \
+        tmux \
+        wget
 
-RUN mkdir -p /tmp/nvim_download && \
-    curl -sL https://github.com/neovim/neovim/releases/download/stable/nvim-linux64.tar.gz \
-        | tar xzf - -C /tmp/nvim_download && \
-    mv /tmp/nvim_download/nvim-linux64/bin/nvim /usr/local/bin/nvim && \
-    curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
-        | bash -s -- --to /usr/local/bin
-
+RUN curl https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
 # Create the user
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME -s /usr/bin/fish \
-    && apt-get update \
-    && apt-get install -y sudo \
     && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 

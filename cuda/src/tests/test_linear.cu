@@ -36,7 +36,7 @@ int main(int argc, char const* argv[]) {
     Tensor dy = make_tensor(make_gmem_ptr(dy_data.get()), make_shape(B, D2));
 
     lib::module::Linear linear(B, D1, D2);
-    linear.init("arange");
+    linear.init(0, "arange");
 
     lib::op::arange(x, T(0), T(1.0f / float(size(x))));
     lib::op::arange(dy, T(0), T(1.0f / float(size(dy))));
@@ -62,8 +62,6 @@ int main(int argc, char const* argv[]) {
             lib::utils::print_device_tensor("db", linear.bias_grad());
             lib::utils::print_device_tensor("dx", dx);
         }
-
-        linear.clear_grad();
     }
     timer.stop();
 

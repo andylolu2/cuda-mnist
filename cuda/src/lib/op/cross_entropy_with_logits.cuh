@@ -20,7 +20,7 @@ namespace lib {
             int stride = blockDim.x * gridDim.x;
 
             for (; batch_idx < size<0>(y_pred); batch_idx += stride) {
-                float max_v = -FLT_MAX;
+                float max_v = std::numeric_limits<float>::lowest();
                 for (int i = 0; i < size<1>(y_pred); ++i) {
                     max_v = cutlass::fast_max(max_v, float(y_pred(batch_idx, i)));
                 }
@@ -77,7 +77,7 @@ namespace lib {
             int batch_size = size<0>(y_pred);
 
             for (; batch_idx < batch_size; batch_idx += stride) {
-                float max_v = -FLT_MAX;
+                float max_v = std::numeric_limits<float>::lowest();
                 for (int i = 0; i < size<1>(y_pred); ++i) {
                     max_v = cutlass::fast_max(max_v, float(y_pred(batch_idx, i)));
                 }
