@@ -5,7 +5,7 @@ One day, I woke up and realised how little I knew about how matrix multiplicatio
 Matrix multiplication is often referred to as GEMM (**Ge**neral **M**atrix **M**ultiplication) in the CUDA world. Efficient matrix multiplication is highly hardware-specific and so the design of the algorithm maps closely to the hardware architecture.
 
 :::info
-**Brief overview of CUDA architecture**
+📝 **Note: Brief overview of CUDA architecture**
 | Level        | Memory hierarchy | Definition                                     |
 | ------------ | ---------------- | ---------------------------------------------- |
 | Device       | Global memory    | -                                              |
@@ -16,9 +16,9 @@ Matrix multiplication is often referred to as GEMM (**Ge**neral **M**atrix **M**
 
 ## Parallelising matrix multiplication
 
-Suppose we want to multiply two matrices $A \in \mathbb{R}^{M \times K}$ and $B \in \mathbb{R}^{K \times N}$ to make $C \in \mathbb{R}^{M \times N} = AB$. In this case, we say that the problem size is $(M, N, K)$. To parallelise this operation, we will split $A$ and $B$ into smaller matrices, matrix multiply them individually and concatenate the results to form $C$.
+Suppose we want to multiply two matrices $A \in \mathbb{R}^{M \times K}$ and $B \in \mathbb{R}^{K \times N}$ to make $C \in \mathbb{R}^{M \times N} = AB$. (We say that the problem size in this case is $(M, N, K)$) To parallelise this operation, we will split $A$ and $B$ into smaller matrices, matrix multiply them individually and concatenate the results to form $C$.
 
-Specifically, we can partition $A$ row-wise (i.e. $M$ into chunks of size $M'$) and $B$ column-wise (i.e. $N$ into chunks of size $N'$). Mathematically, this looks like:
+Specifically, we can partition $A$ row-wise (i.e. $M$ into chunks of size $M'$) and $B$ column-wise (i.e. $N$ into chunks of size $N'$) to give:
 
 $$
 \begin{align}
@@ -39,7 +39,7 @@ $$
 \end{align}
 $$
 
-We can see that each sub-matrix $C_{i,j} = A_i B_j$ in $C$ are independent of each other, so we can easily parallelise the computation of each sub-matrix. 
+We can see that each sub-matrix $C_{i,j} = A_i B_j$ are independent of each other, so we can easily parallelise the computation of each sub-matrix. 
 
 In practice, $K$ might be too large to directly load into memory and compute on. Instead, a typical implementation will also split $K$ into chunks of size $K'$, iterate over each chunk, and accumulate (by summing) over the partial results. This is known as **serial-K reduction**. (As opposed to [**parallel-K reduction**](#parallel-k-reduction)). Mathematically, this looks like:
 
@@ -58,13 +58,14 @@ $$
 $$
 
 :::info
-At any point where the problem size is not divisible by the partition size, we need to add *padding*. This is typically done implicitly when we load the partitioned inputs ($A_{i,k}$ and $B_{k,j}$) into lower-level memory, such that the loaded partition (of size $M' \times K'$ for $A_{i,k}$ and $K' \times N'$ for $B_{k,j}$) is always "full". Though special care needs to be taken when writing the results back to global memory (to avoid out-of-bounds writes).
+📝 **Note: Padding**
+At any point where the problem size is not divisible by the partition size, we need to add *padding*. This is typically done implicitly when we load the partitioned inputs ($A_{i,k}$ and $B_{k,j}$) into lower-level memory where we ensure the loaded partition (of size $M' \times K'$ for $A_{i,k}$ and $K' \times N'$ for $B_{k,j}$) is always "full", by adding zeros. Special care needs to be taken when writing the results back to global memory to avoid out-of-bounds errors.
 :::
 
 On a high level, **three nested partitions** happen to parallelise matrix multiplication on the GPU:
-1. The first partition happens on the **threadblock** level. Each thread block is thus responsible for computing $C_{i,j} = A_i B_j$.
+1. The first partition happens on the **threadblock** level. Each thread block is responsible for computing $C_{i,j} = A_i B_j$.
 2. The second partition happens on the **warp** level. The threadblock-level problem $C_{i,j}$ is further partitioned such that each warp is responsible for computing $C_{i,j}^{(m,n)} = A_i^{(m)} B_j^{(n)}$.
-3. The third partition happens on the **instruction** level. Some instructions expects inputs of particular sizes. For example, second generation Tensor Cores operate on problems of size $(16, 8, 8)$ for fp16, whereas a direct implementation on CUDA cores by multiplication would simply operate on size $(1, 1, 1)$. The warp-level problem is thus even further partitioned such that each chunk has a suitable size for the instruction: $C_{i,j}^{(m,n)|(a,b)} = A_i^{(m)|(a)} B_j^{(n)|(b)}$.
+3. The third partition happens on the **instruction** level. Some instructions expects inputs of particular sizes. For example, second generation Tensor Cores operate on problems of size $(16, 8, 8)$ for fp16, whereas a direct implementation on CUDA cores by scalar multiplication would simply operate on size $(1, 1, 1)$. The warp-level problem is thus even further partitioned such that each chunk has a suitable size for the instruction: $C_{i,j}^{(m,n)|(a,b)} = A_i^{(m)|(a)} B_j^{(n)|(b)}$.
 
 ## Data redundancy
 
@@ -79,8 +80,8 @@ In CUDA, there are three types of user-accessible memory:
 | Registers     | :star:               | :star: :star: :star: |
 
 Here's a high-level view of how each memory type is utilised:
-1. Each threadblock would first load its required inputs into **shared memory**. All subsequent accesses to those data would thus be served by the shared memory instead of by the slower global memory.
-2. Each warp would first load its required inputs into **registers**. All subsequent accesses to those data would be served by the fast registers directly.
+1. Each threadblock would first load its required inputs from global memory into **shared memory**. All subsequent accesses to those data would thus be served by the shared memory instead of by the slower global memory.
+2. Each warp would first load its required inputs from shared memory into **registers**. All subsequent accesses to those data would be served by the fast registers directly.
 
 ## Diving into the details
 
@@ -94,7 +95,7 @@ $$
 
 where $A_{i,k} \in \mathbb{R}^{M' \times K'}$ and $B_{k,j} \in \mathbb{R}^{K' \times N'}$.
 
-Redundant data movement is minimised by loading the sub-inputs $A_{i,k}$ and $B_{k,j}$ into **shared memory**. When we are done with computing $A_{i,k} B_{k,j}$, the next chunk ($A_{i,k+1} and B_{k+1,j}) will be loaded into shared memory.
+Redundant data movement is minimised by loading the sub-inputs $A_{i,k}$ and $B_{k,j}$ into **shared memory**. When we are done with computing $A_{i,k} B_{k,j}$, the next chunk ($A_{i,k+1} and B_{k+1,j}$) will be loaded into shared memory.
 
 In my implementation, a partition size of $(M', N', K') = (128, 256, 32)$ is used.
 
@@ -111,6 +112,7 @@ where $A_{i,k}^{(m,l)} \in \mathbb{R}^{M'' \times K''}$ and $B_{k,j}^{(l,n)} \in
 Redundant data movement is minimised by loading the sub-inputs $A_{i,k}^{(m,l)}$ and $B_{k,j}^{(l,n)}$ into **registers**. Any accesses to $A_{i,k}^{(m,l)}$ and $B_{k,j}^{(l,n)}$ *within* a warp will then be served by the fast registers.
 
 :::info
+📝 **Note: Distributing data across registers**
 It is worth noting that registers are **thread-level only**. This means that inputs in a register cannot be accessed by other threads in a warp. The exact way of how $A_{i,k}^{(m,l)}$ and $B_{k,j}^{(l,n)}$ are partitioned into the registers of each thread depends on the specific instruction used. The NVIDIA docs on [Warp Level Matrix Multiply-Accumulate Instructions](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions) gives a detailed description for each instruction.
 :::
 
@@ -127,6 +129,7 @@ $$
 where $A_{i,k}^{(m,l)|(a,p)} \in \mathbb{R}^{16 \times 8}$ and $B_{k,j}^{(l,n)|(p,b)} \in \mathbb{R}^{8 \times 8}$. Here, all the inputs are already in the registers and thus the data movement overhead is minimal. 
 
 :::info
+📝 **Note**
 Tensor Core operations are **warp-level instructions**, meaning that all the threads in a warp need to execute the Tensor Core instruction at the same time, collaboratively preparing the data to be consumed by **one** Tensor Core.
 :::
 
