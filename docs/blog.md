@@ -59,6 +59,7 @@ $$
 
 :::info
 📝 **Note: Padding**
+
 At any point where the problem size is not divisible by the partition size, we need to add *padding*. This is typically done implicitly when we load the partitioned inputs ($A_{i,k}$ and $B_{k,j}$) into lower-level memory where we ensure the loaded partition (of size $M' \times K'$ for $A_{i,k}$ and $K' \times N'$ for $B_{k,j}$) is always "full", by adding zeros. Special care needs to be taken when writing the results back to global memory to avoid out-of-bounds errors.
 :::
 
@@ -113,6 +114,7 @@ Redundant data movement is minimised by loading the sub-inputs $A_{i,k}^{(m,l)}$
 
 :::info
 📝 **Note: Distributing data across registers**
+
 It is worth noting that registers are **thread-level only**. This means that inputs in a register cannot be accessed by other threads in a warp. The exact way of how $A_{i,k}^{(m,l)}$ and $B_{k,j}^{(l,n)}$ are partitioned into the registers of each thread depends on the specific instruction used. The NVIDIA docs on [Warp Level Matrix Multiply-Accumulate Instructions](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions) gives a detailed description for each instruction.
 :::
 
@@ -130,6 +132,7 @@ where $A_{i,k}^{(m,l)|(a,p)} \in \mathbb{R}^{16 \times 8}$ and $B_{k,j}^{(l,n)|(
 
 :::info
 📝 **Note**
+
 Tensor Core operations are **warp-level instructions**, meaning that all the threads in a warp need to execute the Tensor Core instruction at the same time, collaboratively preparing the data to be consumed by **one** Tensor Core.
 :::
 
