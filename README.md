@@ -4,6 +4,8 @@
 
 I wanted to know how much overhead is added by Python-based ML frameworks like PyTorch, and how much faster we can possibly get by going lower-level (CUDA). It is also a good exercise for me to learn CUDA.
 
+I also wrote a blog post on **How Matrix Multiplication Works on the GPU**, you can read it on [here on HackMD](https://hackmd.io/@andylo/matrix-multiplication-on-gpu) or [here on Medium](TODO).
+
 ## So... how slow is PyTorch?
 
 It's... pretty slow, at least for small networks. Even using PyTorch 2.0's `torch.compile` functionality (with `mode="max-autotune"` and `fullgraph=True`, which is supposed to remove all Python overhead), it can still be up to $6$ times slower than CUDA!
@@ -24,7 +26,7 @@ There are a few reasons why PyTorch is (asymptotically) slower than CUDA:
 > 1. I preloaded all data into memory in order to minimise the host-device data transfer overhead.
 > 2. I allowed the PyTorch implementation to have a few warm-up steps before timing, to allow the JIT compiler to compile the graph.
 
-### Loss curve sanity check
+## Loss curve sanity check
 
 Comparing the loss curves of the PyTorch and CUDA implementations, we can see that they are pretty much identical.
 

@@ -70,7 +70,7 @@ At any point where the problem size is not divisible by the partition size, we n
 :::
 
 On a high level, **three nested partitions** happen to parallelise matrix multiplication on the GPU:
-1. The first partition happens on the **threadblock** level. Each thread block is responsible for computing $C_{i,j} = A_i B_j$.
+1. The first partition happens on the **threadblock** level. Each threadblock is responsible for computing $C_{i,j} = A_i B_j$.
 2. The second partition happens on the **warp** level. The threadblock-level problem $C_{i,j}$ is further partitioned such that each warp is responsible for computing $C_{i,j}^{(m,n)} = A_i^{(m)} B_j^{(n)}$.
 3. The third partition happens on the **instruction** level. Some instructions expects inputs of particular sizes. For example, second generation Tensor Cores operate on problems of size $(16, 8, 8)$ for fp16, whereas a direct implementation on CUDA cores by scalar multiplication would simply operate on size $(1, 1, 1)$. The warp-level problem is thus even further partitioned such that each chunk has a suitable size for the instruction: $C_{i,j}^{(m,n)|(a,b)} = A_i^{(m)|(a)} B_j^{(n)|(b)}$.
 
@@ -92,9 +92,9 @@ Here's a high-level view of how each memory type is utilised:
 
 ## Diving into the details
 
-### Thread block level
+### Threadblock level
 
-On the thread block level, the problem is partitioned into sub-problems of size $(M', N', K')$. Thus, each thread block is responsible for computing a fragment of $C$, denoted as $C_{i,j} \in \mathbb{R}^{M' \times N'}$:
+On the threadblock level, the problem is partitioned into sub-problems of size $(M', N', K')$. Thus, each threadblock is responsible for computing a fragment of $C$, denoted as $C_{i,j} \in \mathbb{R}^{M' \times N'}$:
 
 $$
 C_{i,j} = \sum_{k=1}^{K/K'} A_{i,k} B_{k,j}
@@ -146,10 +146,10 @@ Tensor Core operations are **warp-level instructions**, meaning that all the thr
 
 So, given that we want to minimise data movement, we should just choose a partition size as large as possible to use all shared memory and registers, *right?* Well, not quite.
 
-### Thread block partition size
+### Threadblock partition size
 
 Asymptotically, as the problem size increases, yes, we do want to use as much shared memory and registers as possible. However, for small problem sizes, we might run into two problems:
-1. Have a large partition size means that we will have fewer thread blocks. As a result, we will not be able to utilise all the **Streaming Multiprocessors** (SMs) on the GPU.
+1. Have a large partition size means that we will have fewer threadblocks. As a result, we will not be able to utilise all the SMs on the GPU.
 2. For problem sizes that are not divisible by the partition size, we will have to add more padding to the inputs. As a result, some threads will be doing redundant computation.
 
 ### Warp partition size
@@ -164,23 +164,23 @@ This is completely determined by what instructions your GPU supports. For my RTX
 
 ### Parallel-K reduction
 
-In cases where $M$ and $N$ are small, we might only have a few thread blocks. For example in my implementation, I chose the thread block partition size to be $(M', N') = (128, 256)$. If the original problem size has $M \leq 128$ and $N \leq 256$, we will only have one thread block. This is an issue because each thread block can only execute in one **Streaming Multiprocessor** (SM) but most GPUs have multiple SMs. For example, my RTX 2060 has 30 SMs. This means that we are only using $\frac{1}{30}$ of the GPU's compute power!
+In cases where $M$ and $N$ are small, we might only have a few threadblocks. For example in my implementation, I chose the threadblock partition size to be $(M', N') = (128, 256)$. If the original problem size has $M \leq 128$ and $N \leq 256$, we will only have one threadblock. This is an issue because each threadblock can only execute in one SM and so we are only utilising a fraction of the GPU's compute power! (For example, my RTX 2060 has 30 SMs)
 
-In cases where $K$ is large (even though $M$ and $N$ are small), we can utilise more parallelism by doing **parallel-K reduction**. Recall that in *serial*-K reduction, each thread block iterates over the following sum:
+In cases where $K$ is large (even though $M$ and $N$ are small), we can utilise more parallelism by doing **parallel-K reduction**. Recall that in *serial*-K reduction, each threadblock iterates over the following sum:
 
 $$
 C_{i,j} = \sum_{k=1}^{K/K'} A_{i,k} B_{k,j}
 $$
 
-and accumulates the intermediate results into $C_{i,j}$. In parallel-K reduction, we instead assign each thread block to only compute *one element of the sum* (i.e. $A_{i,k} B_{k,j}$). This allows us to increase the number of thread blocks by a factor of $K/K'$, thus utilising more SMs. 
+and accumulates the intermediate results into $C_{i,j}$. In parallel-K reduction, we instead assign each threadblock to only compute *one element of the sum* (i.e. $A_{i,k} B_{k,j}$). This allows us to increase the number of threadblocks by a factor of $K/K'$, thus utilising more SMs. 
 
-The caveat is that now, we need to *allocate more memory* to store the results from each thread block, and *invoke a second kernel* to perform a final reduction over the partial results to get $C_{i,j}$.
+The caveat is that now, we need to *allocate more memory* to store the results from each threadblock, and *invoke a second kernel* to perform a final reduction over the partial results to get $C_{i,j}$.
 
 ### Software pipelining
 
 Normally, CUDA hides the latency of memory accesses by scheduling other warps to execute while a warp is waiting for data. This requires us to have enough warps to mask the latency. 
 
-However, the number of warps is typically relatively small when doing GEMM. This is because the number of warps is limited by $\frac{\text{Number of registers per thread block}}{\text{Number of registers per warp}}$, and for GEMM we use a lot of registers per warp to hold as much data as possible. As a result, we might not have enough warps to mask the latency.
+However, the number of warps is typically relatively small when doing GEMM. This is because the number of warps is limited by $\frac{\text{Number of registers per threadblock}}{\text{Number of registers per warp}}$, and for GEMM we use a lot of registers per warp to hold as much data as possible. As a result, we might not have enough warps to mask the latency.
 
 > The CUTLASS docs mention that *"The accumulator elements typically occupy at least half a thread's total register budget"*. 
 
