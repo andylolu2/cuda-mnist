@@ -69,23 +69,26 @@ namespace lib {
             static_assert(
                 std::is_same_v<LayoutV2C, LayoutV2D>, "C and D must have the same layout");
 
-            using ElementAccumulator = half_t;                  // data type of accumulator
-            using ElementComputeEpilogue = ElementAccumulator;  // data type of epilogue operations
-            using MMAOp = arch::OpClassTensorOp;
-            using SmArch = arch::Sm75;
+            using ElementAccumulator = half_t;                  // Data type of accumulator
+            using ElementComputeEpilogue = ElementAccumulator;  // Data type of epilogue operations
+            using MMAOp = arch::OpClassTensorOp;                // Use Tensor Cores
+            using SmArch = arch::Sm75;                          // Turing architecture
 
             using DefaultConfig = gemm::device::
                 DefaultGemmConfiguration<MMAOp, SmArch, TA, TB, TC, ElementAccumulator>;
 
+            // Number of pipelining stages, defaults to 2
             const int Stages = DefaultConfig::kStages;
             const int AlignmentA = AccessGranularityBits / cutlass::sizeof_bits<TA>::value;
             const int AlignmentB = AccessGranularityBits / cutlass::sizeof_bits<TB>::value;
             const int EpilogueAccessSize = AccessGranularityBits / cutlass::sizeof_bits<TC>::value;
 
-            using ShapeMMAThreadBlock =
-                typename DefaultConfig::ThreadblockShape;                 // threadblock tile MNK
-            using ShapeMMAWarp = typename DefaultConfig::WarpShape;       // warp tile MNK
-            using ShapeMMAOp = typename DefaultConfig::InstructionShape;  // MMA tile MNK
+            // Threadblock partition size, defaults to (128 256 32)
+            using ShapeMMAThreadBlock = typename DefaultConfig::ThreadblockShape;
+            // Warp partition size, defaults to (64 64 32)
+            using ShapeMMAWarp = typename DefaultConfig::WarpShape;
+            // Instruction size, defaults to (16 8 8)
+            using ShapeMMAOp = typename DefaultConfig::InstructionShape;
             using EpilogueOp = epilogue::thread::LinearCombination<
                 TD,                      // data type of C and D
                 EpilogueAccessSize,      // elements per vectorized memory access for C and D
@@ -93,6 +96,9 @@ namespace lib {
                 ElementComputeEpilogue,  // the data type of epilogue operation
                 Scale                    // operation to update the destination
                 >;
+
+            // Swizzling ensures that nearby threadblocks are executed together to improve cache
+            // efficiency
             using ThreadblockSwizzle =
                 typename cutlass::gemm::threadblock::ThreadblockSwizzleStreamK;
 

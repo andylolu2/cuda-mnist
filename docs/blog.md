@@ -1,10 +1,16 @@
-# How Matrix Multiplication Works on the GPU
+# Matrix Multiplication on GPU
 
-One day, I woke up and realised how little I knew about how matrix multiplication works on the GPU. Having done so many ML projects, I feel ashamed (not really) that I don't know how the most important operation in ML works. I decided that I must go out of my PyTorch/JAX bubble and **venture into the horrors of CUDA**.
+This blog came from a sudden realisation of how little I knew about how matrix multiplication works on the GPU. Having done so many ML projects, I feel like I ought to understand how the most important operation in ML works: What is this "Tensor Core" thing? Why does everyone say "*data movement is the bottleneck*"? How fast can GPUs actually go? 
+
+To answer these questions, I decided that I must go out of my PyTorch bubble and **venture into the abyss of CUDA**. I wrote this blog to document all that I have learnt, and hopefully anyone reading this wouldn't have to go through the pain of digging through CUDA docs/code as I did.
+
+If there is anything that I've learnt in this journey, it is **concurrent matrix multiplication is HARD**. Efficient matrix multiplication heavily depends on the specific hardware you are using and the problem size you are trying to solve. There is no one-size-fits-all solution.
+
+Enough nagging, let's dig in!
 
 ## Recap on GPU architecture
 
-Let's remind ourselves how (NVIDIA) GPUs work. A GPU achieves parallelism by running many **threads**. Each thread is executed on a single CUDA core, though at a given time, only a subset of the threads are active so there can be many more threads than CUDA cores available. Each thread, no matter it is active or not, has its own set of **registers**.
+Let's remind ourselves how (NVIDIA) GPUs work. A GPU achieves parallelism by running many **threads**. Each thread is executed on a single CUDA core, though at a given time, only a subset of the threads are active, so there can be many more threads than CUDA cores available. Each thread, no matter it is active or not, has its own set of **registers**.
 
 A group of 32 threads is known as a **warp**. All threads in a warp must execute together (or be inactive together). In most cases, there are a lot more inactive warps than active warps, and the **warp scheduler** is responsible for choosing which warps to execute at a given time. This allows the GPU to hide the latency of memory accesses by scheduling other warps to execute while a warp is waiting for data.
 
@@ -22,7 +28,7 @@ In the newest Hopper architecture, there is a concept of **threadblock clusters*
 
 ## Parallelising matrix multiplication
 
-Suppose we want to multiply two matrices $A \in \mathbb{R}^{M \times K}$ and $B \in \mathbb{R}^{K \times N}$ to make $C \in \mathbb{R}^{M \times N} = AB$. (We say that the problem size is $(M, N, K)$ in this case). To parallelise this operation, we will split $A$ and $B$ into smaller matrices, matrix multiply them individually and concatenate the results to form $C$.
+Suppose we want to multiply two matrices $A \in \mathbb{R}^{M \times K}$ and $B \in \mathbb{R}^{K \times N}$ to make $C \in \mathbb{R}^{M \times N} = AB$. (We say that the problem size is $(M, N, K)$ in this case). To parallelise this operation, we can split $A$ and $B$ into smaller matrices, matrix multiply them individually and concatenate the results to form $C$.
 
 Specifically, we can partition $A$ row-wise (i.e. $M$ into chunks of size $M'$) and $B$ column-wise (i.e. $N$ into chunks of size $N'$) to give:
 
@@ -47,7 +53,7 @@ $$
 
 We can see that each sub-matrix $C_{i,j} = A_i B_j$ are independent of each other, so we can easily parallelise the computation of each sub-matrix. 
 
-In practice, $K$ might be too large to directly load into memory and compute on. Instead, a typical implementation will also split $K$ into chunks of size $K'$, iterate over each chunk, and accumulate (by summing) over the partial results. This is known as **serial-K reduction**. (As opposed to [**parallel-K reduction**](#parallel-k-reduction)). Mathematically, this looks like:
+In practice, $K$ might be too large to directly load into memory and compute on. Instead, a typical implementation will also split $K$ into chunks of size $K'$, iterate over each chunk, and accumulate (by summing) over the partial results. This is known as **serial-K reduction**. (As opposed to [**parallel-K reduction**](#Parallel-K-reduction)). Mathematically, this looks like:
 
 $$
 \begin{align}
@@ -72,7 +78,7 @@ At any point where the problem size is not divisible by the partition size, we n
 On a high level, **three nested partitions** happen to parallelise matrix multiplication on the GPU:
 1. The first partition happens on the **threadblock** level. Each threadblock is responsible for computing $C_{i,j} = A_i B_j$.
 2. The second partition happens on the **warp** level. The threadblock-level problem $C_{i,j}$ is further partitioned such that each warp is responsible for computing $C_{i,j}^{(m,n)} = A_i^{(m)} B_j^{(n)}$.
-3. The third partition happens on the **instruction** level. Some instructions expects inputs of particular sizes. For example, second generation Tensor Cores operate on problems of size $(16, 8, 8)$ for fp16, whereas a direct implementation on CUDA cores by scalar multiplication would simply operate on size $(1, 1, 1)$. The warp-level problem is thus even further partitioned such that each chunk has a suitable size for the instruction: $C_{i,j}^{(m,n)|(a,b)} = A_i^{(m)|(a)} B_j^{(n)|(b)}$.
+3. The third partition happens on the **instruction** level. Some instructions expect inputs of particular sizes. For example, second generation Tensor Cores operate on problems of size $(16, 8, 8)$ for fp16, whereas a direct implementation on CUDA cores by scalar multiplication would simply operate on size $(1, 1, 1)$. The warp-level problem is thus even further partitioned such that each chunk has a suitable size for the instruction: $C_{i,j}^{(m,n)|(a,b)} = A_i^{(m)|(a)} B_j^{(n)|(b)}$.
 
 ## Data redundancy
 
@@ -163,13 +169,15 @@ A typical implementation might use a partition size of $(M'', N'', K'') = (64, 6
 
 ### Instruction partition size
 
-This is completely determined by what instructions your GPU supports. For my RTX 2060, the ptx instruction for fp16 Tensor Core matrix multiplication (with fp16 accumulation) is `mma.sync.aligned.m16n8k8.row.col.f16.f16.f16.f16`, which expects inputs of size $(16, 8, 8)$.
+This is completely determined by what instructions your GPU supports. For my RTX 2060, the ptx instruction for fp16 Tenor Core matrix multiplication (with fp16 accumulation) is `mma.sync.aligned.m16n8k8.row.col.f16.f16.f16.f16`, which expects inputs of size $(16, 8, 8)$.
 
 ## Even more optimisations
 
+The above techniques can get us close to the theoretical peak performance of the GPU when the problem size is large. However, for smaller problem sizes, they are not as efficient. There are two common techniques to further improve the performance of matrix multiplication: **parallel-K reduction** and **software pipelining**.
+
 ### Parallel-K reduction
 
-In cases where $M$ and $N$ are small, we might only have a few threadblocks. For example in my implementation, I chose the threadblock partition size to be $(M', N') = (128, 256)$. If the original problem size has $M \leq 128$ and $N \leq 256$, we will only have one threadblock. This is an issue because each threadblock can only execute in one SM and so we are only utilising a fraction of the GPU's compute power! (For example, my RTX 2060 has 30 SMs)
+In cases where $M$ and $N$ are small, we might only have a few threadblocks. For example in my implementation, I chose the threadblock partition size to be $(M', N') = (128, 256)$. If the original problem size has $M \leq 128$ and $N \leq 256$, we will only have one threadblock, and so we are only utilising a fraction of the GPU's compute power! (For example, my RTX 2060 has 30 SMs, so to maximise utilisation we want at least 30 threadblocks.)
 
 In cases where $K$ is large (even though $M$ and $N$ are small), we can utilise more parallelism by doing **parallel-K reduction**. Recall that in *serial*-K reduction, each threadblock iterates over the following sum:
 
@@ -195,8 +203,14 @@ To mitigate this effect, we can use **software pipelining**. In essence, we (man
     <img src="https://github.com/andylolu2/cuda-nn/assets/66584117/42ae2a55-a3e9-4cab-b451-09df603c553c" width="600" alt="Loss graph">
 </p>
 
-# Appendix
+This is made possible by the fact that the GPU is like any modern CPU: it can pipeline memory accesses and arithmetic operations as long as there is no data dependency between them. This is known as **instruction-level parallelism**.
 
-## Resources
+## Matrix multiplication in action
+
+If you want to see how all these concepts come together in a real implementation, check out my [implementation of training MNIST from scratch with CUDA](https://github.com/andylolu2/cuda-nn). There, I trained a multi-layer perceptron on MNIST using CUDA, achieving 6x speedup over optimised PyTorch for medium-sized networks.
+
+## References
 
 1. CUTLASS docs: https://github.com/NVIDIA/cutlass/blob/main/media/docs/
+2. CUDA docs: https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html
+3. CUTLASS examples: https://github.com/NVIDIA/cutlass/tree/main/examples

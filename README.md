@@ -4,7 +4,7 @@
 
 I wanted to know how much overhead is added by Python-based ML frameworks like PyTorch, and how much faster we can possibly get by going lower-level (CUDA). It is also a good exercise for me to learn CUDA.
 
-I also wrote a blog post on **How Matrix Multiplication Works on the GPU**, you can read it on [here on HackMD](https://hackmd.io/@andylo/matrix-multiplication-on-gpu) or [here on Medium](TODO).
+I also wrote a blog post on **How Matrix Multiplication Works on the GPU**, you can read it on [here on HackMD](https://hackmd.io/@andylo/matrix-multiplication-on-gpu) or [here on Medium](https://medium.com/@andylolu24/matrix-multiplication-on-the-gpu-e920e50207a8?source=friends_link&sk=020a915e1fce7d910aacda22bce89129).
 
 ## So... how slow is PyTorch?
 
