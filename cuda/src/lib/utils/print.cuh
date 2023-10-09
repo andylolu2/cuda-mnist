@@ -5,14 +5,14 @@
 #include <cute/tensor.hpp>
 
 using namespace cute;
-using namespace cutlass::device_memory;
+using namespace cutlass;
 
 namespace lib {
     namespace utils {
         template <typename T>
         T get_device_value(T const *dev_ptr) {
             T host_value;
-            copy_to_host(&host_value, dev_ptr, 1);
+            device_memory::copy_to_host(&host_value, dev_ptr, 1);
             return host_value;
         }
 

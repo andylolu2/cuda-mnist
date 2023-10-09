@@ -20,16 +20,19 @@ namespace lib {
             int stride = blockDim.x * gridDim.x;
 
             for (; batch_idx < size<0>(y_pred); batch_idx += stride) {
+                // max_v = max(y_pred[batch_idx, :])
                 float max_v = std::numeric_limits<float>::lowest();
                 for (int i = 0; i < size<1>(y_pred); ++i) {
                     max_v = cutlass::fast_max(max_v, float(y_pred(batch_idx, i)));
                 }
 
+                // sum = sum(exp(y_pred[batch_idx, :] - max_v))
                 float sum = 0;
                 for (int i = 0; i < size<1>(y_pred); ++i) {
                     sum += cutlass::fast_exp(y_pred(batch_idx, i) - max_v);
                 }
 
+                // p = softmax(y_pred[batch_idx, :]) = exp(y_pred[batch_idx, :] - max_v) / sum
                 int label = static_cast<int>(y_true(batch_idx));
                 TC log_p =
                     static_cast<TC>(y_pred(batch_idx, label) - max_v - cutlass::fast_log(sum));
@@ -51,23 +54,13 @@ namespace lib {
             cross_entropy_with_logits_fwd_kernel<<<grid_size, block_size>>>(y_pred, y_true, loss);
         }
 
-        /**
-         * Backward pass for cross entropy with logits.
-         *
-         * If y_true is a one-hot vector, then the formula is:
-         * dy_pred = softmax(y_pred) - y_true
-         *
-         * @param y_pred: 2D matrix of shape (batch_size, num_classes)
-         * @param y_true: 1D matrix of shape (batch_size)
-         * @param dy_pred: 2D matrix of shape (batch_size, num_classes)
-         */
         template <typename TensorA, typename TensorB, typename TensorC>
         __global__ void cross_entropy_with_logits_bwd_kernel(
             TensorA y_pred, TensorB y_true, TensorC dy_pred) {
             /**
              * Backward formula is:
              * dy_pred = (softmax(y_pred) - y_true) / batch_size
-             * The / batch_size comes from taking the mean of the loss.
+             * The "/ batch_size" comes from taking the mean of the loss.
              */
             using TC = typename TensorC::value_type;
 

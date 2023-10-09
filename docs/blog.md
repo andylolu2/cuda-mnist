@@ -97,24 +97,24 @@ Here's a high-level view of how each memory type is utilised:
 On the threadblock level, the problem is partitioned into sub-problems of size $(M', N', K')$. Thus, each threadblock is responsible for computing a fragment of $C$, denoted as $C_{i,j} \in \mathbb{R}^{M' \times N'}$:
 
 $$
-C_{i,j} = \sum_{k=1}^{K/K'} A_{i,k} B_{k,j}
+\begin{align}
+C_{i,j} &= \sum_{k=1}^{K/K'} A_{i,k} B_{k,j}
+&& \text{ where } A_{i,k} \in \mathbb{R}^{M' \times K'} \text{ and } B_{k,j} \in \mathbb{R}^{K' \times N'}
+\end{align}
 $$
 
-where $A_{i,k} \in \mathbb{R}^{M' \times K'}$ and $B_{k,j} \in \mathbb{R}^{K' \times N'}$.
-
 Redundant data movement is minimised by loading the sub-inputs $A_{i,k}$ and $B_{k,j}$ into **shared memory**. When we are done with computing $A_{i,k} B_{k,j}$, the next chunk ($A_{i,k+1}$ and $B_{k+1,j}$) will be loaded into shared memory.
-
-In my implementation, a partition size of $(M', N', K') = (128, 256, 32)$ is used.
 
 ### Warp level
 
 On the warp level, the sub-problem is further partitioned into sub-sub-problems of size $(M'', N'', K'')$. Thus, each *warp* is responsible for computing a fragment of $C_{i,j}$, denoted as $C_{i,j}^{(m,n)} \in \mathbb{R}^{M'' \times N''}$:
 
 $$
-C_{i,j}^{(m,n)} = \sum_{k=1}^{K/K'} \sum_{l=1}^{K'/K''} A_{i,k}^{(m,l)} B_{k,j}^{(l,n)}
+\begin{align}
+C_{i,j}^{(m,n)} &= \sum_{k=1}^{K/K'} \sum_{l=1}^{K'/K''} A_{i,k}^{(m,l)} B_{k,j}^{(l,n)}
+&& \text{ where } A_{i,k}^{(m,l)} \in \mathbb{R}^{M'' \times K''} \text{ and } B_{k,j}^{(l,n)} \in \mathbb{R}^{K'' \times N''}
+\end{align}
 $$
-
-where $A_{i,k}^{(m,l)} \in \mathbb{R}^{M'' \times K''}$ and $B_{k,j}^{(l,n)} \in \mathbb{R}^{K'' \times N''}$.
 
 Redundant data movement is minimised by loading the sub-inputs $A_{i,k}^{(m,l)}$ and $B_{k,j}^{(l,n)}$ into **registers**. Any accesses to $A_{i,k}^{(m,l)}$ and $B_{k,j}^{(l,n)}$ *within* a warp will then be served by the fast registers.
 
@@ -124,14 +124,15 @@ Redundant data movement is minimised by loading the sub-inputs $A_{i,k}^{(m,l)}$
 It is worth noting that registers are **thread-level only**. This means that inputs in a register cannot be accessed by other threads in a warp. The exact way of how $A_{i,k}^{(m,l)}$ and $B_{k,j}^{(l,n)}$ are partitioned into the registers of each thread depends on the specific instruction used. The NVIDIA docs on [Warp Level Matrix Multiply-Accumulate Instructions](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions) gives a detailed description for each instruction.
 :::
 
-In my implementation, a warp-level partition size of $(M'', N'', K'') = (64, 64, 32)$ is used.
-
 ### Tensor core level
 
 To actually perform the matrix multiplication, we use the **Tensor Cores** on the GPU. My GPU (RTX 2060) has the second generation Tensor Cores, which are specialised to solve problems of size $(M''', N''', K''') = (16, 8, 8)$. Thus, we even further partition $C_{i,j}^{(m,n)}$ into $C_{i,j}^{(m,n)|(a,b)} \in \mathbb{R}^{16 \times 8}$:
 
 $$
-C_{i,j}^{(m,n)|(a,b)} = \sum_{k=1}^{K/K'} \sum_{l=1}^{K'/K''} \sum_{p=1}^{K''/8} A_{i,k}^{(m,l)|(a,p)} B_{k,j}^{(l,n)|(p,b)}
+\begin{align}
+C_{i,j}^{(m,n)|(a,b)} &= \sum_{k=1}^{K/K'} \sum_{l=1}^{K'/K''} \sum_{p=1}^{K''/8} A_{i,k}^{(m,l)|(a,p)} B_{k,j}^{(l,n)|(p,b)}
+&& \text{ where } A_{i,k}^{(m,l)|(a,p)} \in \mathbb{R}^{16 \times 8} \text{ and } B_{k,j}^{(l,n)|(p,b)} \in \mathbb{R}^{8 \times 8}
+\end{align}
 $$
 
 where $A_{i,k}^{(m,l)|(a,p)} \in \mathbb{R}^{16 \times 8}$ and $B_{k,j}^{(l,n)|(p,b)} \in \mathbb{R}^{8 \times 8}$. Here, all the inputs are already in the registers and thus the data movement overhead is minimal. 
@@ -152,9 +153,13 @@ Asymptotically, as the problem size increases, yes, we do want to use as much sh
 1. Have a large partition size means that we will have fewer threadblocks. As a result, we will not be able to utilise all the SMs on the GPU.
 2. For problem sizes that are not divisible by the partition size, we will have to add more padding to the inputs. As a result, some threads will be doing redundant computation.
 
+A typical implementation might use a partition size of $(M', N', K') = (128, 256, 32)$.
+
 ### Warp partition size
 
 In general, having a large warp partition size means there will be less redundant data movement, but at the cost of having fewer warps. Having too few warps means that we will not be able to hide the latency of memory accesses (because we might run out of other warps to schedule while the current warp is waiting for data).
+
+A typical implementation might use a partition size of $(M'', N'', K'') = (64, 64, 32)$.
 
 ### Instruction partition size
 

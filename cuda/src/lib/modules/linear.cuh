@@ -81,7 +81,7 @@ namespace lib {
                     float lower = -upper;
                     lib::op::uniform(w_full.view(), lower, upper, seed);
                     lib::op::uniform(b_full.view(), lower, upper, seed);
-                } else if (mode == "arange") {
+                } else if (mode == "arange") {  // Useful for unit testing
                     lib::op::arange(w_full.view(), 0.0f, 1.0f / (in_features * out_features));
                     lib::op::arange(b_full.view(), 0.0f, 1.0f / out_features);
                 } else {
@@ -96,8 +96,8 @@ namespace lib {
                 lib::op::repeat<0>(b_broadcasted_half.view(), b_full.view());
 
                 // y = x @ w + b
-                auto gemm_op =
-                    lib::op::gemm<128>(x, w_half.view(), b_broadcasted_half.view(), y, workspace);
+                auto gemm_op = lib::op::gemm<AccessGranularityBits>(
+                    x, w_half.view(), b_broadcasted_half.view(), y, workspace);
                 CUTLASS_CHECK(gemm_op());
             }
 
@@ -107,7 +107,7 @@ namespace lib {
                 backward(x, dy);
 
                 // dx = dy @ w.T
-                Tensor w_T = lib::op::transpose<0, 1>(w_half.view());
+                auto w_T = lib::op::transpose<0, 1>(w_half.view());
                 auto gemm_op = lib::op::gemm<AccessGranularityBits>(dy, w_T, dx, workspace);
                 CUTLASS_CHECK(gemm_op());
             }
@@ -115,7 +115,7 @@ namespace lib {
             template <typename TensorX, typename TensorDy>
             void backward(TensorX const& x, TensorDy const& dy) {
                 // dw = x.T @ dy
-                Tensor x_T = lib::op::transpose<0, 1>(x);
+                auto x_T = lib::op::transpose<0, 1>(x);
                 auto gemm_op = lib::op::gemm<AccessGranularityBits>(x_T, dy, dw.view(), workspace);
                 CUTLASS_CHECK(gemm_op());
 
