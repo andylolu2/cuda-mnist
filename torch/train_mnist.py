@@ -49,7 +49,7 @@ if __name__ == "__main__":
         nn.Linear(hidden_size, 10),
     ).to(device)
     model = torch.compile(
-        model, mode="max-autotune", fullgraph=True,
+        model, mode="max-autotune", fullgraph=True
     )
 
     optimizer = SGD(model.parameters(), lr=0.003)
@@ -65,23 +65,27 @@ if __name__ == "__main__":
         return loss
 
     # Warmup
-    for _ in range(10):
+    for _ in range(50):
         train_step()
+    
+    torch.cuda.synchronize()
 
-    start = time.perf_counter()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
 
     step = 0
     loss = 0
+    start_event.record()
     while (step := step + 1) <= n_steps:
         loss = train_step()
         optimizer.step()
 
         if step % log_every == 0:
             print(f"Step: {step}, loss: {loss.item():.4f}")
+    end_event.record()
 
+    torch.cuda.synchronize()
 
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
+    print(f"Duration: {start_event.elapsed_time(end_event) / 1000:.4f}s")
 
-    print(f"Duration: {time.perf_counter() - start:.4f}s")
 
