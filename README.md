@@ -1,5 +1,7 @@
 # Training MNIST from Scratch with CUDA
 
+> This project is developed on a Turing architecture GPU. Modifications are required to run on other architectures.
+
 ## But why?
 
 I wanted to know how much overhead is added by Python-based ML frameworks like PyTorch, and how much faster we can possibly get by going lower-level (CUDA). It is also a good exercise for me to learn CUDA.
