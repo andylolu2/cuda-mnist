@@ -12,7 +12,7 @@ I also wrote a blog post on **How Matrix Multiplication Works on the GPU**, you 
 
 It's... pretty slow, at least for small networks. Even using PyTorch 2.0's `torch.compile` functionality (with `mode="max-autotune"` and `fullgraph=True`, which is supposed to remove all Python overhead), it can still be up to $6$ times slower than CUDA!
 
-This overhead goes down as the network gets larger, though it never completely goes away. It asymptotically approaches $\approx 20\%$ times slower than CUDA.
+This overhead goes down as the network gets larger, though it never completely goes away. It asymptotically approaches $\approx 20$% slower than CUDA.
 
 <p align="center">
     <img src="https://github.com/andylolu2/cuda-nn/assets/66584117/4cea2704-228c-46bc-a274-dd0946083075" width="600" alt="Time graph">
