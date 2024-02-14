@@ -23,19 +23,5 @@ namespace lib {
 
             return make_tensor(x.data(), new_layout);
         }
-
-        template <int I, typename TensorX>
-        auto squeeze(TensorX const& x) {
-            auto new_shape = remove<I>(x.layout().shape());
-            auto new_stride = remove<I>(x.layout().stride());
-            auto new_layout = make_layout(new_shape, new_stride);
-
-            return make_tensor(x.data(), new_layout);
-        }
-
-        template <typename TensorX, typename NewLayout>
-        auto reshape(TensorX const& x, NewLayout const& new_layout) {
-            return x.compose(new_layout);
-        }
     }  // namespace op
 }  // namespace lib

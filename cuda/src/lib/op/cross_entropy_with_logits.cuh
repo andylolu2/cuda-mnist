@@ -15,7 +15,7 @@ namespace lib {
             TensorA y_pred, TensorB y_true, TensorC loss) {
             using TC = typename TensorC::value_type;
 
-            // A batch is handled by one thread
+            // Each batch is handled by one thread
             int batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
             int stride = blockDim.x * gridDim.x;
 
@@ -64,7 +64,7 @@ namespace lib {
              */
             using TC = typename TensorC::value_type;
 
-            // A batch is handled by one thread
+            // Each batch is handled by one thread
             int batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
             int stride = blockDim.x * gridDim.x;
             int batch_size = size<0>(y_pred);

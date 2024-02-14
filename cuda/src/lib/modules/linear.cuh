@@ -31,6 +31,10 @@ namespace lib {
             int batch_size;
             int in_features;
             int out_features;
+
+            // We will create two copies of each parameter, one in fp32 ("master" weights) and
+            // one in fp16 ("clone" weights). The fp32 copy is used for updating the weights,
+            // while the fp16 copy is used for the forward and backward passes.
             DeviceTensor<BaseParamType, Layout<ShapeW>> w_full;
             DeviceTensor<ParamType, Layout<ShapeW>> w_half;
             DeviceTensor<BaseParamType, Layout<ShapeB>> b_full;
@@ -75,8 +79,7 @@ namespace lib {
             auto bias_grad() { return db.view(); }
 
             void init(int seed = 0, std::string mode = "kaiming") {
-                if (mode == "kaiming") {
-                    // Kaiming uniform
+                if (mode == "kaiming") {  // Kaiming uniform
                     float upper = 1.0f / std::sqrt(in_features);
                     float lower = -upper;
                     lib::op::uniform(w_full.view(), lower, upper, seed);

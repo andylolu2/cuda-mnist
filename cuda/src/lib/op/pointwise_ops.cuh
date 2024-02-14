@@ -12,6 +12,10 @@ using namespace cute;
 namespace lib {
     namespace op {
         namespace detail {
+            /**
+             * A generic n-ary (n inputs and 1 output) pointwise kernel.
+             * This can be made a lot more efficient with vectorized loads and stores.
+             */
             template <typename NAryFunc, typename TensorOut, typename... TensorIn>
             __global__ void n_ary_pointwise_kernel(
                 TensorOut output, NAryFunc func, TensorIn... inputs) {
@@ -31,6 +35,9 @@ namespace lib {
                 n_ary_pointwise_kernel<<<grid_size, block_size>>>(output, func, inputs...);
             }
 
+            /**
+             * A generic n-ary (n inputs and 1 output) pointwise kernel with randomness.
+             */
             template <typename NAryFunc, typename TensorOut, typename... TensorIn>
             __global__ void n_ary_random_pointwise_kernel(
                 TensorOut output, NAryFunc func, int seed = 0, TensorIn... inputs) {

@@ -36,9 +36,9 @@ namespace lib {
             MLP(int batch_size, int in_features, std::vector<int> feature_sizes)
                 : batch_size(batch_size), in_features(in_features), feature_sizes(feature_sizes) {
                 // Need to reserve space for the activations_data and d_activations_data in
-                // particular Otherwise the DeviceAllocation will be moved and the pointers to
+                // particular. Otherwise the DeviceAllocation will be moved and the pointers to
                 // device will be invalid.
-
+                // TODO: There should be a better way to handle this.
                 activations.reserve(feature_sizes.size());
                 d_activations.reserve(feature_sizes.size());
 

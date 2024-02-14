@@ -36,8 +36,11 @@ namespace lib {
 
             std::vector<size_t> indices;
 
+            // Device tensors that hold the entire dataset.
             DeviceTensor<T, Layout<Shape<int, int, int>, Stride<int, int, _1>>> images;
             DeviceTensor<int, Layout<Shape<int, _1>, Stride<_1, _1>>> labels;
+
+            // Buffer that holds the current batch of images and labels.
             DeviceTensor<T, Layout<Shape<int, int, int>>> batch_images;
             DeviceTensor<int, Layout<Shape<int, _1>>> batch_labels;
 
@@ -58,7 +61,7 @@ namespace lib {
                   batch_labels(make_device_tensor<int>(make_shape(batch_size, _1{}))) {
                 auto dataset = mnist::read_dataset(data_dir);
 
-                // Flatten host data into a single vector.
+                // Flatten host data into a single vector for copying to device.
                 std::vector<T> image_host(dataset_size * 28 * 28);
                 std::vector<int> label_host(dataset_size);
                 for (size_t i = 0; i < dataset_size; ++i) {
@@ -104,6 +107,9 @@ namespace lib {
             }
             ~DataLoader() = default;
 
+            /**
+             * Load the next batch of images and labels into the buffer tensors.
+             */
             void next() {
                 if (current_idx + batch_size > dataset_size) {
                     current_idx = 0;

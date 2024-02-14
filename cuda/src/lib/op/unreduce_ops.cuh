@@ -58,11 +58,5 @@ namespace lib {
             detail::RepeatWithScale op;
             detail::unreduce<I>(output, input, op);
         }
-
-        template <int I, typename TensorOut, typename TensorIn>
-        void mean_bwd(TensorOut dx, TensorIn dy) {
-            detail::RepeatWithScale<float> op{1.0f / size<I>(dx)};
-            detail::unreduce<I>(dx, dy, op);
-        }
     }  // namespace op
 }  // namespace lib
