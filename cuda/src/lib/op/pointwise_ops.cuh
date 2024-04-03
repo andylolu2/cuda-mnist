@@ -17,6 +17,8 @@ namespace lib {
              * This can be made a lot more efficient with vectorized loads and stores.
              */
             template <typename NAryFunc, typename TensorOut, typename... TensorIn>
+            // template <typename NAryFunc, typename VecType, typename TensorOut, typename...
+            // TensorIn>
             __global__ void n_ary_pointwise_kernel(
                 TensorOut output, NAryFunc func, TensorIn... inputs) {
                 using T = typename TensorOut::value_type;
@@ -25,6 +27,44 @@ namespace lib {
                 for (; idx < size(output); idx += stride) {
                     output(idx) = static_cast<T>(func(idx, inputs(idx)...));
                 }
+                // using T = typename TensorOut::value_type;
+
+                // constexpr int kVecSize = sizeof(VecType) / sizeof(T);
+
+                // auto tiler = Shape<Int<kVecSize>>{};
+                // auto make_input_buffer_pair = [&](auto tensor) {
+                //     auto flattend_input = make_tensor(tensor.data(), make_shape(size(tensor)));
+                //     auto buffer = make_tensor<T>(make_shape(Int<kVecSize>{}, _1{}));
+                //     return std::make_tuple(flattend_input, std::move(buffer));
+                // };
+                // auto inputs_and_buffers = std::apply(
+                //     [&](auto... args) { return std::make_tuple(make_input_buffer_pair(args)...);
+                //     }, std::make_tuple(inputs...));
+
+                // int idx = threadIdx.x + blockIdx.x * blockDim.x;
+                // int stride = blockDim.x * gridDim.x;
+                // for (; idx < ceil_div(size(output), kVecSize); idx += stride) {
+                //     for_each(inputs_and_buffers, [&](auto &input_and_buffer) {
+                //         auto src =
+                //             local_tile(std::get<0>(input_and_buffer), tiler, make_coord(idx));
+                //         auto &dst = std::get<1>(input_and_buffer);
+                //         copy_vec<VecType>(src, dst);
+                //     });
+
+                //     CUTE_UNROLL
+                //     for (int i = 0; i < kVecSize; ++i) {
+                //         auto global_idx = idx * kVecSize + i;
+                //         if (global_idx < size(output)) {
+                //             auto input_tuple = std::apply(
+                //                 [&](auto... input_and_buffer) {
+                //                     return std::make_tuple(std::get<1>(input_and_buffer)(i)...);
+                //                 },
+                //                 inputs_and_buffers);
+                //             output(global_idx) = static_cast<T>(std::apply(
+                //                 func, std::tuple_cat(std::make_tuple(global_idx), input_tuple)));
+                //         }
+                //     }
+                // }
             }
 
             template <typename NAryFunc, typename TensorOut, typename... TensorIn>
@@ -32,6 +72,12 @@ namespace lib {
                 TensorOut const &output, NAryFunc const &func, TensorIn const &...inputs) {
                 auto [grid_size, block_size] = launch_config(size(output));
                 n_ary_pointwise_kernel<<<grid_size, block_size>>>(output, func, inputs...);
+                // using T = typename TensorOut::value_type;
+                // using VecType = uint128_t;
+                // constexpr int kVecSize = sizeof(VecType) / sizeof(T);
+                // auto [grid_size, block_size] = launch_config(ceil_div(size(output), kVecSize));
+                // n_ary_pointwise_kernel<NAryFunc, VecType, TensorOut, TensorIn...>
+                //     <<<grid_size, block_size>>>(output, func, inputs...);
             }
 
             /**
