@@ -49,8 +49,7 @@ namespace lib {
             assert(size<0>(y_pred) == size<0>(y_true));
             assert(size<0>(y_pred) == size<0>(loss));
 
-            auto [grid_size, block_size] = launch_config(
-                cross_entropy_with_logits_fwd_kernel<TensorA, TensorB, TensorC>, size<0>(y_pred));
+            auto [grid_size, block_size] = launch_config(size<0>(y_pred));
             cross_entropy_with_logits_fwd_kernel<<<grid_size, block_size>>>(y_pred, y_true, loss);
         }
 
@@ -98,8 +97,7 @@ namespace lib {
             assert(y_pred.shape() == dy_pred.shape());
             assert(size<0>(y_pred) == size<0>(y_true));
 
-            auto [grid_size, block_size] = launch_config(
-                cross_entropy_with_logits_bwd_kernel<TensorA, TensorB, TensorC>, size(y_pred));
+            auto [grid_size, block_size] = launch_config(size(y_pred));
             cross_entropy_with_logits_bwd_kernel<<<grid_size, block_size>>>(
                 y_pred, y_true, dy_pred);
         }

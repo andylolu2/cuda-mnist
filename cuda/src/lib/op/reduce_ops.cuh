@@ -36,8 +36,7 @@ namespace lib {
             void reduce(TensorX x, TensorY y, ReduceOp op, T acc) {
                 assert(remove<I>(x.shape()) == y.shape());
 
-                auto [grid_size, block_size] =
-                    launch_config(reduce_kernel<I, ReduceOp, TensorX, TensorY, T>, size(y));
+                auto [grid_size, block_size] = launch_config(size(y));
 
                 reduce_kernel<I><<<grid_size, block_size>>>(x, y, op, acc);
             }

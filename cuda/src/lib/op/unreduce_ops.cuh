@@ -36,8 +36,7 @@ namespace lib {
             void unreduce(TensorOut const& output, TensorIn const& input, UnreduceOp op) {
                 assert(remove<I>(output.shape()) == input.shape());
 
-                auto [grid_size, block_size] =
-                    launch_config(unreduce_kernel<I, UnreduceOp, TensorOut, TensorIn>, size(input));
+                auto [grid_size, block_size] = launch_config(size(input));
 
                 unreduce_kernel<I><<<grid_size, block_size>>>(output, input, op);
             }

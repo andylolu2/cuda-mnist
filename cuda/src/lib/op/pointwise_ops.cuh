@@ -30,8 +30,7 @@ namespace lib {
             template <typename NAryFunc, typename TensorOut, typename... TensorIn>
             void pointwise(
                 TensorOut const &output, NAryFunc const &func, TensorIn const &...inputs) {
-                auto [grid_size, block_size] = launch_config(
-                    n_ary_pointwise_kernel<NAryFunc, TensorOut, TensorIn...>, size(output));
+                auto [grid_size, block_size] = launch_config(size(output));
                 n_ary_pointwise_kernel<<<grid_size, block_size>>>(output, func, inputs...);
             }
 
@@ -56,8 +55,7 @@ namespace lib {
             template <typename NAryFunc, typename TensorOut, typename... TensorIn>
             void pointwise_random(
                 TensorOut &output, NAryFunc &func, int seed, TensorIn &...inputs) {
-                auto [grid_size, block_size] = launch_config(
-                    n_ary_random_pointwise_kernel<NAryFunc, TensorOut, TensorIn...>, size(output));
+                auto [grid_size, block_size] = launch_config(size(output));
                 n_ary_random_pointwise_kernel<<<grid_size, block_size>>>(
                     output, func, seed, inputs...);
             }
