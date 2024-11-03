@@ -14,8 +14,6 @@ I also wrote a blog post on **How Matrix Multiplication Works on the GPU**, you 
 
 It's... pretty slow, at least for small networks. For small models (hidden dim $\leq 256$) it can still be up to $5$ times slower than CUDA!
 
-This overhead goes down as the network gets larger, though it never completely goes away. It asymptotically approaches $\approx 50$% slower than CUDA.
-
 <p align="center">
     <img src="./assets/time_graph.png" width="600" alt="Time graph">
 </p>
