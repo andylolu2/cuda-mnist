@@ -9,6 +9,4 @@ torch/.pytorch
 __pycache__
 logs/
 
-*.png
-
 nsys
