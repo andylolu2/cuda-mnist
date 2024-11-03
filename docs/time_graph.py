@@ -42,7 +42,8 @@ if __name__ == "__main__":
     ax1.set(xlabel="Hidden dim", ylabel="Run time (s)")
 
     sns.lineplot(data=df_time, x="size", y="speedup", marker="o", ax=ax2)
-    ax2.set(xlabel="Hidden dim", ylabel="Speedup (%)", ylim=(0, None))
+    ax2.set(xlabel="Hidden dim", ylabel="Relative speed", ylim=(0, None))
+    ax2.axhline(1, color="red", linestyle="--")
 
     fig.tight_layout()
     plt.savefig("time_graph.png", dpi=300)

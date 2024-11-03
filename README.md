@@ -1,6 +1,6 @@
 # Training MNIST from Scratch with CUDA
 
-> This project is developed on a Turing architecture GPU. Modifications are required to run on other architectures.
+> This project is developed on a RTX 3060 (Ampere). Modifications are required to run on other architectures.
 
 ## But why?
 
@@ -12,22 +12,22 @@ I also wrote a blog post on **How Matrix Multiplication Works on the GPU**, you 
 
 ## So... how slow is PyTorch?
 
-It's... pretty slow, at least for small networks. Even using PyTorch 2.0's `torch.compile` functionality (with `mode="max-autotune"` and `fullgraph=True`, which is supposed to remove all Python overhead), it can still be up to $6$ times slower than CUDA!
+It's... pretty slow, at least for small networks. For small models (hidden dim $\leq 256$) it can still be up to $5$ times slower than CUDA!
 
-This overhead goes down as the network gets larger, though it never completely goes away. It asymptotically approaches $\approx 20$% slower than CUDA.
+This overhead goes down as the network gets larger, though it never completely goes away. It asymptotically approaches $\approx 50$% slower than CUDA.
 
 <p align="center">
-    <img src="https://github.com/andylolu2/cuda-nn/assets/66584117/4cea2704-228c-46bc-a274-dd0946083075" width="600" alt="Time graph">
+    <img src="./assets/time_graph.png" width="600" alt="Time graph">
 </p>
 
-There are a few reasons why PyTorch is (asymptotically) slower than CUDA:
-1. The main contributor is my implementation usees fp16 accumulation for matrix multiplication while PyTorch uses fp32. NVIDIA reports double(!) the amount of theoretical throughput using fp16. PyTorch defaults to fp32 for stability reasons, but I haven't encountered those issues in my runs.
-2. I tuned the hyperparameters for the CUDA implementation specifically for my hardware. I'm not sure if `max-autotune` does the same for PyTorch.
+Even for larger networks, this CUDA implementation is still $\approx 50$% faster than PyTorch! The main reasons are:
+1. This implementation usees fp16 accumulation for matrix multiplication while PyTorch uses fp32. NVIDIA reports double(!) the amount of theoretical throughput using fp16. PyTorch defaults to fp32 for stability reasons, but I haven't encountered those issues in my runs.
+2. This implementation fuses the SGD update step with the backward pass, saving a lot of bandwidth in loading and storing the parameters and gradients.
 
 > [!NOTE]
 > I applied a few optimisations to both implementations.
 > 1. I preloaded all data into memory in order to minimise the host-device data transfer overhead.
-> 2. I allowed the PyTorch implementation to have a few warm-up steps before timing, to allow the JIT compiler to compile the graph.
+> 2. I allowed the PyTorch implementation to have a few warm-up steps before timing.
 
 My implementation is also not perfect! For example, I didn't use vectorized loads for my element-wise kernels (e.g., `relu`). I expect this to give a pretty substantial speedup too.
 
@@ -36,5 +36,5 @@ My implementation is also not perfect! For example, I didn't use vectorized load
 Comparing the loss curves of the PyTorch and CUDA implementations, we can see that they are pretty much identical.
 
 <p align="center">
-    <img src="https://github.com/andylolu2/cuda-nn/assets/66584117/d48f55c5-f53e-4084-ad9b-ae7d6056dfba" width="600" alt="Loss graph">
+    <img src="./assets/loss_graph.png" width="600" alt="Loss graph">
 </p>
