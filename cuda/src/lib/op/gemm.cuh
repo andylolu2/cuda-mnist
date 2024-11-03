@@ -25,11 +25,11 @@ namespace lib {
     namespace op {
         using ScaleType = cutlass::epilogue::thread::ScaleType;
 
+        /// Computes D = alpha x Acc + beta x C
         template <
             int AccessGranularityBits = 16,  // Problem size (in bits) needs to be a multiple
                                              // of this number. 128 gives the best performance.
-            ScaleType::Kind Scale = ScaleType::Kind::NoBetaScaling,  /// Control Alpha and Beta
-                                                                     /// scaling
+            ScaleType::Kind Scale = ScaleType::Kind::Default,
             typename EngineA,
             typename ShapeA,
             typename StrideA,
@@ -47,7 +47,9 @@ namespace lib {
             Tensor<EngineB, Layout<ShapeB, StrideB>> const &mB,
             Tensor<EngineC, Layout<ShapeC, StrideC>> const &mC,
             Tensor<EngineD, Layout<ShapeD, StrideD>> const &mD,
-            DeviceAllocation<uint8_t> &workspace) {
+            DeviceAllocation<uint8_t> &workspace,
+            float alpha,
+            float beta) {
             static_assert(rank_v<ShapeA> == 2, "A must be a matrix");
             static_assert(rank_v<ShapeB> == 2, "B must be a matrix");
             static_assert(rank_v<ShapeC> == 2, "C must be a matrix");
@@ -59,8 +61,12 @@ namespace lib {
             using TD = typename EngineD::value_type;
             static_assert(std::is_same_v<TA, half_t>, "A dtype must be half");
             static_assert(std::is_same_v<TB, half_t>, "B dtype must be half");
-            static_assert(std::is_same_v<TC, half_t>, "C dtype must be half");
-            static_assert(std::is_same_v<TD, half_t>, "D dtype must be half");
+            static_assert(
+                std::is_same_v<TC, half_t> || std::is_same_v<TC, float>,
+                "C dtype must be half or float");
+            static_assert(
+                std::is_same_v<TD, half_t> || std::is_same_v<TD, float>,
+                "D dtype must be half or float");
 
             using LayoutV2A = gemm::detail::StrideToLayoutTagA_t<StrideA>;
             using LayoutV2B = gemm::detail::StrideToLayoutTagA_t<StrideB>;
@@ -69,10 +75,10 @@ namespace lib {
             static_assert(
                 std::is_same_v<LayoutV2C, LayoutV2D>, "C and D must have the same layout");
 
-            using ElementAccumulator = half_t;                  // Data type of accumulator
+            using ElementAccumulator = TC;                      // Data type of accumulator
             using ElementComputeEpilogue = ElementAccumulator;  // Data type of epilogue operations
             using MMAOp = arch::OpClassTensorOp;                // Use Tensor Cores
-            using SmArch = arch::Sm75;                          // Turing architecture
+            using SmArch = arch::Sm80;                          // Turing architecture
 
             using DefaultConfig = gemm::device::
                 DefaultGemmConfiguration<MMAOp, SmArch, TA, TB, TC, ElementAccumulator>;
@@ -84,7 +90,8 @@ namespace lib {
             const int EpilogueAccessSize = AccessGranularityBits / cutlass::sizeof_bits<TC>::value;
 
             // Threadblock partition size, defaults to (128 256 32)
-            using ShapeMMAThreadBlock = typename DefaultConfig::ThreadblockShape;
+            // using ShapeMMAThreadBlock = typename DefaultConfig::ThreadblockShape;
+            using ShapeMMAThreadBlock = gemm::GemmShape<128, 128, 64>;
             // Warp partition size, defaults to (64 64 32)
             using ShapeMMAWarp = typename DefaultConfig::WarpShape;
             // Instruction size, defaults to (16 8 8)
@@ -140,8 +147,8 @@ namespace lib {
                 {M, N, K},       // problem size (M N K)
                 split_k_slices,  // batch count or splitk slices
                 {
-                    static_cast<ElementComputeEpilogue>(1),  // alpha
-                    static_cast<ElementComputeEpilogue>(1)   // beta
+                    static_cast<ElementComputeEpilogue>(alpha),  // alpha
+                    static_cast<ElementComputeEpilogue>(beta)    // beta
                 },
                 mA.data().get(),  // ptr to A (input)
                 mB.data().get(),  // ptr to B (input)
@@ -185,9 +192,11 @@ namespace lib {
             Tensor<EngineA, Layout<ShapeA, StrideA>> const &mA,
             Tensor<EngineB, Layout<ShapeB, StrideB>> const &mB,
             Tensor<EngineD, Layout<ShapeD, StrideD>> const &mD,
-            DeviceAllocation<uint8_t> &workspace) {
+            DeviceAllocation<uint8_t> &workspace,
+            float alpha,
+            float beta) {
             return gemm<AccessGranularityBits, ScaleType::Kind::OnlyAlphaScaling>(
-                mA, mB, mD, mD, workspace);
+                mA, mB, mD, mD, workspace, alpha, beta);
         }
     }  // namespace op
 }  // namespace lib

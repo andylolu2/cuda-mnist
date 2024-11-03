@@ -27,14 +27,18 @@ namespace lib {
            private:
             int batch_size;
             int in_features;
+            float lr;
             std::vector<int> feature_sizes;
             std::vector<Linear> layers;
             std::vector<DeviceTensor<ActivationType, Layout<ActivationShape>>> activations;
             std::vector<DeviceTensor<GradType, Layout<ActivationShape>>> d_activations;
 
            public:
-            MLP(int batch_size, int in_features, std::vector<int> feature_sizes)
-                : batch_size(batch_size), in_features(in_features), feature_sizes(feature_sizes) {
+            MLP(int batch_size, int in_features, std::vector<int> feature_sizes, float lr)
+                : batch_size(batch_size),
+                  in_features(in_features),
+                  feature_sizes(feature_sizes),
+                  lr(lr) {
                 // Need to reserve space for the activations_data and d_activations_data in
                 // particular. Otherwise the DeviceAllocation will be moved and the pointers to
                 // device will be invalid.
@@ -45,7 +49,7 @@ namespace lib {
                 for (size_t i = 0; i < feature_sizes.size(); i++) {
                     int in = i == 0 ? in_features : feature_sizes[i - 1];
                     int out = feature_sizes[i];
-                    layers.emplace_back(batch_size, in, out);
+                    layers.emplace_back(batch_size, in, out, lr);
 
                     if (i != feature_sizes.size() - 1) {
                         activations.emplace_back(
@@ -92,12 +96,6 @@ namespace lib {
                     if (i > 0) {
                         lib::op::drelu(dx_in, dx_in, x_in);
                     }
-                }
-            }
-
-            void update(float lr) {
-                for (auto& layer : layers) {
-                    layer.update(lr);
                 }
             }
 

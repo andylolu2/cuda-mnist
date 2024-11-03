@@ -31,6 +31,7 @@ namespace lib {
             int batch_size;
             int in_features;
             int out_features;
+            float lr;
 
             // We will create two copies of each parameter, one in fp32 ("master" weights) and
             // one in fp16 ("clone" weights). The fp32 copy is used for updating the weights,
@@ -39,21 +40,21 @@ namespace lib {
             DeviceTensor<ParamType, Layout<ShapeW>> w_half;
             DeviceTensor<BaseParamType, Layout<ShapeB>> b_full;
             DeviceTensor<ParamType, Layout<ShapeW>> b_broadcasted_half;
-            DeviceTensor<GradType, Layout<ShapeW>> dw;
             DeviceTensor<GradType, Layout<ShapeB>> db;
             DeviceAllocation<uint8_t> workspace;
 
            public:
-            Linear(int batch_size_, int in_features_, int out_features_)
+            Linear(int batch_size_, int in_features_, int out_features_, float lr_)
                 : batch_size(batch_size_),
                   in_features(in_features_),
                   out_features(out_features_),
+                  lr(lr_),
                   w_full(make_device_tensor<BaseParamType>(make_shape(in_features, out_features))),
                   w_half(make_device_tensor<ParamType>(make_shape(in_features, out_features))),
                   b_full(make_device_tensor<BaseParamType>(make_shape(out_features))),
                   b_broadcasted_half(
                       make_device_tensor<ParamType>(make_shape(batch_size, out_features))),
-                  dw(make_device_tensor<GradType>(make_shape(in_features, out_features))),
+                  //   dw(make_device_tensor<GradType>(make_shape(in_features, out_features))),
                   db(make_device_tensor<GradType>(make_shape(out_features))) {}
 
             // Move constructor
@@ -61,11 +62,11 @@ namespace lib {
                 : batch_size(other.batch_size),
                   in_features(other.in_features),
                   out_features(other.out_features),
+                  lr(other.lr),
                   w_full(std::move(other.w_full)),
                   w_half(std::move(other.w_half)),
                   b_full(std::move(other.b_full)),
                   b_broadcasted_half(std::move(other.b_broadcasted_half)),
-                  dw(std::move(other.dw)),
                   db(std::move(other.db)) {}
 
             ~Linear() = default;
@@ -73,8 +74,6 @@ namespace lib {
             auto weight() { return w_full.view(); }
 
             auto bias() { return b_full.view(); }
-
-            auto weight_grad() { return dw.view(); }
 
             auto bias_grad() { return db.view(); }
 
@@ -100,7 +99,7 @@ namespace lib {
 
                 // y = x @ w + b
                 auto gemm_op = lib::op::gemm<AccessGranularityBits>(
-                    x, w_half.view(), b_broadcasted_half.view(), y, workspace);
+                    x, w_half.view(), b_broadcasted_half.view(), y, workspace, 1.0f, 1.0f);
                 CUTLASS_CHECK(gemm_op());
             }
 
@@ -111,23 +110,22 @@ namespace lib {
 
                 // dx = dy @ w.T
                 auto w_T = lib::op::transpose<0, 1>(w_half.view());
-                auto gemm_op = lib::op::gemm<AccessGranularityBits>(dy, w_T, dx, workspace);
+                auto gemm_op =
+                    lib::op::gemm<AccessGranularityBits>(dy, w_T, dx, workspace, 1.0f, 0.0f);
                 CUTLASS_CHECK(gemm_op());
             }
 
+            // Compute gradients and apply updates
             template <typename TensorX, typename TensorDy>
             void backward(TensorX const& x, TensorDy const& dy) {
-                // dw = x.T @ dy
+                // w = w - lr * (dw = x.T @ dy)
                 auto x_T = lib::op::transpose<0, 1>(x);
-                auto gemm_op = lib::op::gemm<AccessGranularityBits>(x_T, dy, dw.view(), workspace);
+                auto gemm_op = lib::op::gemm<AccessGranularityBits>(
+                    x_T, dy, w_full.view(), w_full.view(), workspace, -lr, 1.0f);
                 CUTLASS_CHECK(gemm_op());
 
-                // db = sum(dy, axis=0)
+                // b = b + lr * (db = sum(dy, axis=0))
                 lib::op::sum<0>(dy, db.view());
-            }
-
-            void update(float lr) {
-                lib::op::sgd(w_full.view(), w_full.view(), dw.view(), lr);
                 lib::op::sgd(b_full.view(), b_full.view(), db.view(), lr);
             }
 

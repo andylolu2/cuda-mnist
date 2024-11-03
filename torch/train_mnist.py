@@ -1,13 +1,13 @@
 import sys
-import time
 from pathlib import Path
+
+from torchvision import datasets
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.optim import SGD
 from torch.utils.data import DataLoader, TensorDataset
-from torchvision import datasets, transforms
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 log_every = 100
@@ -26,10 +26,9 @@ if __name__ == "__main__":
 
     torch.manual_seed(seed)
 
-
     dataset_path = Path(__file__).parents[1] / "data"
     mnist = datasets.MNIST(dataset_path, download=True, train=True)
-    
+
     # Move data to GPU pre-emptively
     trainset = TensorDataset(
         mnist.data.to(device, dtype) / 255,
@@ -48,9 +47,7 @@ if __name__ == "__main__":
         nn.ReLU(),
         nn.Linear(hidden_size, 10),
     ).to(device)
-    model = torch.compile(
-        model, mode="max-autotune", fullgraph=True
-    )
+    # model = torch.compile(model, mode="reduce-overhead", fullgraph=True)
 
     optimizer = SGD(model.parameters(), lr=0.003)
 
@@ -67,7 +64,7 @@ if __name__ == "__main__":
     # Warmup
     for _ in range(50):
         train_step()
-    
+
     torch.cuda.synchronize()
 
     start_event = torch.cuda.Event(enable_timing=True)
@@ -87,5 +84,3 @@ if __name__ == "__main__":
     torch.cuda.synchronize()
 
     print(f"Duration: {start_event.elapsed_time(end_event) / 1000:.4f}s")
-
-

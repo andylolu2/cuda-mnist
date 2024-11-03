@@ -38,7 +38,7 @@ int main(int argc, char const* argv[]) {
     Tensor dx = make_tensor(make_gmem_ptr(dx_data.get()), make_shape(B, D1));
     Tensor dy = make_tensor(make_gmem_ptr(dy_data.get()), make_shape(B, D3));
 
-    lib::module::MLP mlp(B, D1, {D2, D3});
+    lib::module::MLP mlp(B, D1, {D2, D3}, 1.0f);
     mlp.init(0, "arange");
 
     lib::op::arange(x, T(0), T(1.0f / float(size(x))));
@@ -63,7 +63,6 @@ int main(int argc, char const* argv[]) {
             lib::utils::print_device_tensor("y", y);
             lib::utils::print_device_tensor("dy", dy);
             for (size_t i = 0; i < mlp.n_layers(); ++i) {
-                lib::utils::print_device_tensor(std::to_string(i) + ".dw"s, mlp[i].weight_grad());
                 lib::utils::print_device_tensor(std::to_string(i) + ".db"s, mlp[i].bias_grad());
             }
             lib::utils::print_device_tensor("dx", dx);

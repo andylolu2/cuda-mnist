@@ -20,7 +20,6 @@ int main(int argc, char const* argv[]) {
 
     int B = atoi(argv[1]);
     int C = atoi(argv[2]);
-    bool print_tensors = true;
 
     DeviceAllocation<half_t> y_data(B * C);
     DeviceAllocation<half_t> dy_data(B * C);

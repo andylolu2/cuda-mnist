@@ -43,7 +43,7 @@ int main(int argc, char const* argv[]) {
     DeviceTensor dy = make_device_tensor<half_t>(make_shape(B, CLASSES));
     DeviceTensor dx = make_device_tensor<half_t>(make_shape(B, W * H));
 
-    lib::module::MLP mlp(B, W * H, layer_sizes);
+    lib::module::MLP mlp(B, W * H, layer_sizes, learning_rate);
     mlp.init(seed);
 
     lib::utils::GpuTimer timer;
@@ -66,8 +66,6 @@ int main(int argc, char const* argv[]) {
             half_t loss_value = lib::utils::get_device_value(loss_scalar.data_ptr());
             std::cout << "Step: " << step << ", loss: " << loss_value << std::endl;
         }
-
-        mlp.update(learning_rate);
     }
 
     timer.stop();

@@ -50,7 +50,7 @@ int main(int argc, char const* argv[]) {
     std::vector<float> times;
 
     DeviceAllocation<uint8_t> workspace;
-    auto gemm_op = lib::op::gemm<128>(a, b, c, d, workspace);
+    auto gemm_op = lib::op::gemm<128>(a, b, c, d, workspace, 1.0f, 1.0f);
 
     for (int i = 0; i < n; ++i) {
         lib::utils::GpuTimer timer;

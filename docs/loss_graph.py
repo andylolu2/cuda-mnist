@@ -2,14 +2,13 @@ import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
 import pandas as pd
+import seaborn as sns
+
 
 def read_losses(file: Path):
     steps = []
     losses = []
-    step_time = []
     with open(file, "r") as f:
         for line in f:
             step = re.search(r"step: (\d+)", line, re.I)
@@ -20,13 +19,11 @@ def read_losses(file: Path):
     df = pd.DataFrame({"step": steps, "loss": losses})
     return df
 
+
 if __name__ == "__main__":
     sizes = [128, 256, 512, 1024, 2048, 4096, 8192]
     logs_dir = Path(__file__).parents[1] / "logs"
-    name_map = {
-        "cuda": "CUDA", 
-        "torch": "PyTorch (Compiled)"
-    }
+    name_map = {"cuda": "CUDA", "torch": "PyTorch (Compiled)"}
 
     dfs = []
     for name in name_map:
@@ -43,11 +40,11 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.lineplot(
-        data=df, 
-        x="step", 
-        y="loss", 
-        hue="Hidden dim", 
-        style="Method", 
+        data=df,
+        x="step",
+        y="loss",
+        hue="Hidden dim",
+        style="Method",
         ax=ax,
     )
     ax.set(xlabel="Step", ylabel="Loss")
@@ -55,4 +52,3 @@ if __name__ == "__main__":
     fig.tight_layout()
     # plt.show()
     plt.savefig("loss_graph.png", dpi=300)
-

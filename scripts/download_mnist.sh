@@ -3,22 +3,13 @@
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <dist_dir>"
     exit 1
-elif [ -d $1 ]; then
-    echo "Error: $1 already exists"
-    exit 1
 fi 
 
 DIST_DIR=$1
 mkdir -p ${DIST_DIR}
 
-wget http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz -O ${DIST_DIR}/train-images-idx3-ubyte.gz
-wget http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz -O ${DIST_DIR}/train-labels-idx1-ubyte.gz
-wget http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz -O ${DIST_DIR}/t10k-images-idx3-ubyte.gz
-wget http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz -O ${DIST_DIR}/t10k-labels-idx1-ubyte.gz
-
-cd ${DIST_DIR}
-
-gzip -d train-images-idx3-ubyte.gz
-gzip -d train-labels-idx1-ubyte.gz
-gzip -d t10k-images-idx3-ubyte.gz
-gzip -d t10k-labels-idx1-ubyte.gz
+for file in train-images-idx3-ubyte.gz train-labels-idx1-ubyte.gz t10k-images-idx3-ubyte.gz  t10k-labels-idx1-ubyte.gz; do 
+    link=https://web.archive.org/web/20220331130319/https://yann.lecun.com/exdb/mnist/${file}
+    wget ${link} --no-check-certificate -O ${DIST_DIR}/${file}
+    gzip -d ${DIST_DIR}/${file}
+done

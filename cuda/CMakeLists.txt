@@ -21,7 +21,7 @@ FILE(
 FOREACH(exe ${executables})
     GET_FILENAME_COMPONENT(filename ${exe} NAME_WE)
     add_executable(${filename} ${exe})
-    set_target_properties(${filename} PROPERTIES CUDA_ARCHITECTURES 75)
+    set_target_properties(${filename} PROPERTIES CUDA_ARCHITECTURES native)
     target_compile_options(
         ${filename} PRIVATE
         -Wno-unused-function
